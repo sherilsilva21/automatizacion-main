@@ -1,0 +1,38 @@
+import type { NextRequest } from "next/server";
+import { exigirUsuario } from "@/lib/auth/sesion";
+import { firestore } from "@/lib/firebase/admin";
+import { Timestamp } from "firebase-admin/firestore";
+import { COLECCIONES, type Proceso } from "@/lib/modelo/tipos";
+
+/** Procesos del usuario (solo los suyos). */
+export async function GET(request: NextRequest) {
+  const usuario = await exigirUsuario(request);
+  if (usuario instanceof Response) return usuario;
+
+  // Solo filtros de igualdad: no hace falta índice compuesto; se ordena en memoria.
+  // `?estado=ejecutando` lo usa el motor de procesamiento (así solo lee los lotes activos).
+  const estado = request.nextUrl.searchParams.get("estado");
+  let consulta = firestore().collection(COLECCIONES.procesos).where("uid", "==", usuario.uid);
+  if (estado) consulta = consulta.where("estado", "==", estado);
+  const resultado = await consulta.limit(200).get();
+  const procesos = resultado.docs
+    .map((d) => {
+      const p = d.data() as Proceso;
+      return { id: d.id, carpeta: p.carpeta, estado: p.estado, totalArchivos: p.totalArchivos, inicio: p.inicio.toMillis() };
+    })
+    .sort((a, b) => b.inicio - a.inicio);
+  return Response.json({ procesos });
+}
+
+/** Crea un proceso en estado `subiendo` (el navegador subirá las imágenes a procesos/<id>/). */
+export async function POST(request: NextRequest) {
+  const usuario = await exigirUsuario(request);
+  if (usuario instanceof Response) return usuario;
+  const cuerpo = (await request.json().catch(() => null)) as { carpeta?: unknown } | null;
+  const carpeta = typeof cuerpo?.carpeta === "string" ? cuerpo.carpeta.slice(0, 200) : "carpeta";
+  const proceso: Proceso = {
+    uid: usuario.uid, carpeta, estado: "subiendo", totalArchivos: 0, inicio: Timestamp.now(), fin: null, rutaExcel: null,
+  };
+  const ref = await firestore().collection(COLECCIONES.procesos).add(proceso);
+  return Response.json({ id: ref.id });
+}

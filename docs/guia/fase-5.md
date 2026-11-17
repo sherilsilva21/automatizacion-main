@@ -1,0 +1,24 @@
+# Fase 5 — OCR dentro de una función de Vercel
+
+**Objetivo.** Leer imágenes con OCR **dentro de una función desplegada** (no solo en tu computador), con una estrategia de reintentos y sin que una falla cuelgue la función.
+
+**Qué construyes.** `src/lib/ocr/motor.ts`, `src/lib/ocr/leer-factura.ts` y la configuración de empaquetado en `next.config.ts`.
+
+**Pasos.**
+1. **Motor** (`motor.ts`): crea **un** worker de `tesseract.js` con idioma `spa` (`createWorker("spa", 1, { langPath, gzip: true, cachePath: os.tmpdir(), cacheMethod: "none" })`). `langPath` apunta a `node_modules/@tesseract.js-data/spa/4.0.0_best_int` (comprueba la ruta real instalada) para que **no haya descargas de red**; los archivos son `.traineddata.gz`, de ahí `gzip: true`; el único sitio escribible en Vercel es `/tmp`. El worker se guarda en `globalThis` para **reutilizarlo entre invocaciones** de la misma instancia caliente. Expone `leerImagen(buffer, modo): { texto, confianza }`. La imagen llega como `Buffer` descargado de Blob, nunca del disco.
+2. **Tres modos** de lectura: `original`; `preprocesado` (con `sharp`: respetar la orientación EXIF, escala de grises, `normalize`, ampliar 1,5× y `sharpen`); y `encabezado` (franja superior del 30 % **invertida**, que recupera texto blanco sobre fondo de color: proveedor y NIT de uno de los diseños).
+3. **Estrategia** (`leer-factura.ts`): leer el original → extraer → validar; si hay motivos, reintentar en modo preprocesado y quedarse con el resultado que tenga **menos motivos**; si siguen, leer el encabezado y **anteponer** su texto al mejor texto, y volver a elegir. Lo que siga fallando queda en revisión.
+4. **Topes de tiempo** (60 s al arrancar el worker y 60 s por lectura): el worker corre en un hilo aparte; si no puede cargar un archivo, **el hilo muere en silencio y la promesa nunca se resuelve**. Sin tope, la función se cuelga hasta agotar el tiempo (504). Con tope falla con un mensaje claro, se descarta el worker (el siguiente intento arranca uno nuevo) y el lote lo reintenta.
+5. **Empaquetado** en `next.config.ts`: tesseract carga con `require` dinámico el núcleo WASM y varias dependencias, y los datos del idioma con una ruta calculada; el trazador de archivos de Next **no los ve** y no entran a la función. Hay que incluirlos con `outputFileTracingIncludes` en las rutas que hacen OCR (`/api/procesos/**`): `node_modules/@tesseract.js-data/spa/4.0.0_best_int/**/*`, `node_modules/tesseract.js/**/*`, **todo** `node_modules/tesseract.js-core/**/*` (el núcleo que elige el worker depende de la CPU: `relaxedsimd`, `simd` o base, con o sin `lstm`; excluir variantes dio `Cannot find module`) y las dependencias `bmp-js`, `idb-keyval`, `is-url`, `node-fetch`, `regenerator-runtime`, `wasm-feature-detect`, `zlibjs`, `whatwg-url`, `tr46`, `webidl-conversions`. El paquete de la función queda en unos 113 MB (límite: 250 MB sin comprimir).
+6. **Simular el empaquetado en local**: `output: "standalone"` copia **solo** los archivos trazados. El repositorio de referencia lo activa con la variable `NEXT_STANDALONE=1` (`NEXT_STANDALONE=1 npm run build` y luego `node .next/standalone/server.js` con tu `.env` copiado dentro). Sirve para detectar archivos que faltan, pero **no detecta todo** (en local se eligió otra variante del núcleo que en Vercel): la prueba definitiva es el despliegue.
+
+**Por qué.** `tesseract.js` ya usa hilos internamente; con 1 vCPU un pool propio no acelera nada, el paralelismo lo da el motor del navegador (Fase 8). El reintento con imagen preprocesada y con el encabezado invertido es lo que sube la tasa de facturas aceptadas.
+
+**Verificación.** Procesar **20 facturas ya subidas a Blob ejecutándose en el despliegue de Vercel (no solo en local)** e imprimir tiempo total, tiempo por imagen y los campos extraídos. Si solo funciona en local, la fase **no** está terminada. (En el repositorio de referencia esta verificación se hace con `scripts/probar-http.ts` una vez construidas las Fases 3 y 6; si quieres verificar antes, escribe una ruta temporal protegida con sesión y bórrala al terminar.) Referencia medida en Vercel Hobby: unos **1,5 s por factura** en promedio con 3 lotes concurrentes; el primer lote tras un arranque en frío tardó ~9 s.
+
+**Errores reales de esta fase (solo en Vercel).**
+- `/lote` responde **504 `FUNCTION_INVOCATION_TIMEOUT`**: el worker no encontraba `tesseract.js-core` (no estaba en el paquete) y se colgó.
+- `Cannot find module 'tesseract.js-core/tesseract-core-relaxedsimd'`: se había incluido solo la variante `lstm`.
+- Faltan los datos de idioma: tesseract intentaría descargarlos de internet.
+
+**Pídele a tu IA.** "Explícame por qué el worker puede quedarse colgado sin dar error, qué hace `outputFileTracingIncludes` y cómo puedo comprobar qué archivos entraron al paquete de la función."
