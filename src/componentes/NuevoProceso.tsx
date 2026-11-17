@@ -6,7 +6,8 @@
 // y, si sigue fallando, queda en una lista para reintentarlo después.
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { comprimirFoto } from "@/lib/navegador/comprimir-imagen";
 import { EXTENSIONES_IMAGEN } from "@/lib/rutas";
 import { dormir, num } from "./formato";
 import { ResumenEnVivo, procesadasDe } from "./ResumenEnVivo";
@@ -18,6 +19,22 @@ const REINTENTOS = 3;
 const TAMANO_LOTE_POR_DEFECTO = 100;
 
 const mb = (bytes: number) => (bytes / 1024 / 1024).toLocaleString("es-CO", { maximumFractionDigits: 1 });
+/** Peso legible: las fotos comprimidas pesan cientos de KB y «0,5 MB» diría poco. */
+const peso = (bytes: number) => (bytes < 1024 * 1024 ? `${num(Math.round(bytes / 1024))} KB` : `${mb(bytes)} MB`);
+
+// ¿Pantalla táctil? Solo ahí tiene sentido «Tomar fotos». Se lee con useSyncExternalStore y no al renderizar ni con
+// setState dentro de un efecto (React 19 prohíbe lo segundo): en el servidor vale `false` y, ya en el navegador,
+// React lo actualiza sin error de hidratación y se suscribe a cambios (p. ej., conectar un ratón a una tableta).
+const CONSULTA_TACTIL = "(pointer: coarse)";
+function suscribirTactil(aviso: () => void) {
+  const consulta = window.matchMedia(CONSULTA_TACTIL);
+  consulta.addEventListener("change", aviso);
+  return () => consulta.removeEventListener("change", aviso);
+}
+const esTactilEnNavegador = () => window.matchMedia(CONSULTA_TACTIL).matches;
+const esTactilEnServidor = () => false;
+
+interface Foto { id: number; archivo: File; original: number; url: string }
 
 /** El servidor rechazó el archivo (no es imagen, pesa demasiado…): reintentar no sirve. */
 class Rechazo extends Error {}
@@ -66,6 +83,60 @@ export function NuevoProceso() {
   const [hayFallidos, setHayFallidos] = useState(0);
   const [motivos, setMotivos] = useState<string[]>([]);
   const ocupado = useRef(false);
+
+  // Fase E1: bandeja de fotos tomadas con la cámara (ya comprimidas, listas para subir).
+  const esTactil = useSyncExternalStore(suscribirTactil, esTactilEnNavegador, esTactilEnServidor);
+  const [fotos, setFotos] = useState<Foto[]>([]);
+  const [comprimiendo, setComprimiendo] = useState(0);
+  const [errorFoto, setErrorFoto] = useState<string | null>(null);
+  const contadorFotos = useRef(0);
+  // URLs de las miniaturas (URL.createObjectURL): ocupan memoria hasta revocarlas, así que se llevan aquí y se
+  // revocan al quitar la foto, al procesarlas o al salir de la página.
+  const urlsMiniaturas = useRef(new Set<string>());
+  useEffect(() => {
+    const urls = urlsMiniaturas.current;
+    return () => { urls.forEach((u) => URL.revokeObjectURL(u)); urls.clear(); };
+  }, []);
+
+  async function agregarFotos(lista: FileList | null) {
+    const nuevas = [...(lista ?? [])];
+    if (nuevas.length === 0) return;
+    setErrorFoto(null);
+    setComprimiendo((c) => c + nuevas.length);
+    for (const original of nuevas) {
+      const n = ++contadorFotos.current;
+      try {
+        const archivo = await comprimirFoto(original, n);
+        const url = URL.createObjectURL(archivo);
+        urlsMiniaturas.current.add(url);
+        setFotos((fs) => [...fs, { id: n, archivo, original: original.size, url }]);
+      } catch (e) {
+        // FormatoNoLegible trae el mensaje para la persona (p. ej., HEIC): mejor avisar aquí que recibir un 415.
+        setErrorFoto(e instanceof Error ? e.message : "No se pudo preparar la foto");
+      } finally {
+        setComprimiendo((c) => c - 1);
+      }
+    }
+  }
+
+  function soltarMiniaturas(lista: Foto[]) {
+    for (const f of lista) { URL.revokeObjectURL(f.url); urlsMiniaturas.current.delete(f.url); }
+  }
+
+  function quitarFoto(id: number) {
+    soltarMiniaturas(fotos.filter((f) => f.id === id));
+    setFotos((fs) => fs.filter((f) => f.id !== id));
+  }
+
+  function procesarFotos() {
+    if (ocupado.current || fotos.length === 0) return;
+    const lista = fotos.map((f) => f.archivo);
+    const cuando = new Date().toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
+    soltarMiniaturas(fotos);
+    setFotos([]);
+    // Mismo camino que «Elegir archivos»; todas las fotos en UN lote (no se divide por «Facturas por lote»).
+    void empezar(lista, `Fotos del ${cuando}`, lista.length);
+  }
 
   const idsSesion = useMemo(() => new Set(lotes.map((l) => l.id).filter((x): x is string => Boolean(x))), [lotes]);
   const { datos } = useMetricas(idsSesion.size > 0 ? 5000 : null);
@@ -123,7 +194,8 @@ export function NuevoProceso() {
     window.dispatchEvent(new CustomEvent("lote-iniciado", { detail: { id } })); // el motor lo toma de inmediato
   }
 
-  async function empezar(lista: File[], nombre: string) {
+  /** `porLote`: facturas por lote; por defecto el campo «Facturas por lote» (las fotos lo fijan a todas). */
+  async function empezar(lista: File[], nombre: string, porLote: number = tam) {
     if (ocupado.current || lista.length === 0) return;
     ocupado.current = true;
     setError(null);
@@ -133,7 +205,7 @@ export function NuevoProceso() {
     motivosRef.current = [];
     setHayFallidos(0);
     setMotivos([]);
-    const t = tam > 0 ? tam : lista.length;
+    const t = porLote > 0 ? porLote : lista.length;
     const trozos: File[][] = [];
     for (let k = 0; k < lista.length; k += t) trozos.push(lista.slice(k, k + t));
     setLotes(trozos.map((z, k) => ({
@@ -189,7 +261,52 @@ export function NuevoProceso() {
             data-testid="archivos"
           />
         </label>
+        {esTactil && (
+          <label className={`${botonSecundario} cursor-pointer ${subiendo ? "pointer-events-none opacity-40" : ""}`}>
+            Tomar fotos…
+            <input
+              type="file" accept="image/*" capture="environment" multiple className="sr-only" disabled={subiendo}
+              onChange={(e) => { void agregarFotos(e.target.files); e.target.value = ""; }}
+              data-testid="camara"
+            />
+          </label>
+        )}
       </div>
+
+      {(fotos.length > 0 || comprimiendo > 0) && (
+        <div className="flex flex-col gap-3 rounded-md bg-pista/50 p-4" data-testid="bandeja-fotos">
+          <p className="cifra" aria-live="polite">
+            <b>{num(fotos.length)}</b> {fotos.length === 1 ? "foto" : "fotos"}
+            {fotos.length > 0 && (
+              <span className="text-texto2">
+                {" "}· {peso(fotos.reduce((a, f) => a + f.original, 0))} originales → {peso(fotos.reduce((a, f) => a + f.archivo.size, 0))} para subir
+              </span>
+            )}
+            {comprimiendo > 0 && <span className="ml-2 inline-flex items-center gap-1 text-texto2"><Girando className="text-acento" /> Preparando {num(comprimiendo)}…</span>}
+          </p>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {fotos.map((f, i) => (
+              <li key={f.id} className="flex flex-col gap-2 rounded-md border border-borde bg-superficie p-2 text-xs">
+                {/* eslint-disable-next-line @next/next/no-img-element -- miniatura local (URL de objeto), no pasa por el optimizador de Next */}
+                <img src={f.url} alt={`Foto ${i + 1}`} className="aspect-[3/4] w-full rounded object-cover" />
+                <span className="cifra">{i + 1}. {peso(f.original)} → {peso(f.archivo.size)}</span>
+                <button className={botonSecundario} onClick={() => quitarFoto(f.id)} aria-label={`Quitar la foto ${i + 1}`}>Quitar</button>
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={procesarFotos} disabled={subiendo || comprimiendo > 0 || fotos.length === 0}
+            className={`${botonPrimario} self-start`} data-testid="procesar-fotos"
+          >
+            Procesar {fotos.length === 1 ? "esta foto" : `estas ${num(fotos.length)} fotos`}
+          </button>
+          <p className="text-xs text-texto2">
+            Una foto con sombras, arrugas o en ángulo se lee peor que una imagen escaneada: es normal que más facturas pasen a revisión.
+          </p>
+        </div>
+      )}
+
+      {errorFoto && <p role="alert" className="text-sm text-malo">{errorFoto}</p>}
 
       {archivos.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-md bg-pista/50 p-4">
@@ -218,9 +335,9 @@ export function NuevoProceso() {
             {subiendo ? <><Girando /> Subiendo…</> : `Subir y procesar ${num(archivos.length)} facturas`}
           </button>
         </div>
-      ) : (
+      ) : fotos.length === 0 && comprimiendo === 0 ? (
         <p className="text-sm text-texto2">Aún no has elegido nada.</p>
-      )}
+      ) : null}
 
       {error && <p role="alert" className="text-sm text-malo">{error}</p>}
 
