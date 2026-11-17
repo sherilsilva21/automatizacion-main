@@ -30,6 +30,8 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/procesos/*/lote": OCR_ARCHIVOS,
     "/api/salud": OCR_ARCHIVOS,
+    // Fase E3: «Sugerir con IA» vuelve a hacer OCR de la imagen (sin esto, en Vercel el worker no encuentra sus archivos).
+    "/api/facturas/*/sugerir": OCR_ARCHIVOS,
   },
   turbopack: {
     rules: {

@@ -14,6 +14,7 @@ export const metricasVacias = (): Metricas => ({
   clientesNuevos: 0,
   proveedores: {},
   porPeriodo: {},
+  asistidasIa: 0,
 });
 
 // ───────────────────────── Cambios (lo que se incrementa al guardar) ─────────────────────────
@@ -28,6 +29,8 @@ export interface ImportesManual {
   proveedor: string | null;
   /** Fecha de emisión `yyyy-mm-dd` (Fase E2: periodo de IVA). Sin fecha válida no suma a ningún periodo. */
   fecha?: string | null;
+  /** Fase E3: la persona aceptó sugerencias de la IA en esta factura. */
+  asistidaIa?: boolean;
 }
 
 export type EventoMetrica =
@@ -65,6 +68,9 @@ export function cambiosManual(nuevo: ImportesManual & { clienteNuevo?: boolean }
   if (!previo) cambios.push({ ruta: ["metricas", "manuales", "n"], incremento: 1 });
   for (const c of IMPORTES) if (delta(c) !== 0) cambios.push({ ruta: ["metricas", "manuales", c], incremento: delta(c) });
   if (nuevo.clienteNuevo) cambios.push({ ruta: ["metricas", "clientesNuevos"], incremento: 1 });
+  // Fase E3: una factura cuenta como «asistida por IA» UNA vez (la primera vez que se guarda con sugerencias
+  // aceptadas). Volver a editarla no la cuenta de nuevo ni la descuenta: la ayuda ya se usó.
+  if (nuevo.asistidaIa && !previo?.asistidaIa) cambios.push({ ruta: ["metricas", "asistidasIa"], incremento: 1 });
 
   const mismo = previo && previo.nitProveedor === nuevo.nitProveedor;
   if (previo?.nitProveedor && !mismo) {
@@ -164,6 +170,7 @@ export function sumarMetricas(lotes: (Partial<Metricas> | undefined)[]): Metrica
     r.errores += m.errores ?? 0;
     r.duplicadas += m.duplicadas ?? 0;
     r.clientesNuevos += m.clientesNuevos ?? 0;
+    r.asistidasIa = (r.asistidasIa ?? 0) + (m.asistidasIa ?? 0);
     for (const [nit, p] of Object.entries(m.proveedores ?? {})) {
       const previo: MetricasProveedor = r.proveedores[nit] ?? { ...importesVacios(), nombre: p.nombre };
       r.proveedores[nit] = { ...sumaImportes(previo, p), nombre: p.nombre || previo.nombre };

@@ -18,13 +18,15 @@ export type ResultadoCorreccion =
   | { ok: false; status: 404 | 409 | 422; error: string; motivos?: string[] };
 
 // `fecha` (Fase E2): si la persona la corrige a otro periodo de IVA, el importe se mueve de periodo.
-const importesDe = (f: Pick<Factura, "subtotal" | "iva" | "impoconsumo" | "total" | "nitProveedor" | "proveedor" | "fecha">): ImportesManual => ({
+const importesDe = (f: Pick<Factura, "subtotal" | "iva" | "impoconsumo" | "total" | "nitProveedor" | "proveedor" | "fecha" | "asistidaPorIa">): ImportesManual => ({
   subtotal: f.subtotal ?? 0, iva: f.iva ?? 0, impoconsumo: f.impoconsumo ?? 0, total: f.total ?? 0,
-  nitProveedor: f.nitProveedor, proveedor: f.proveedor, fecha: f.fecha,
+  nitProveedor: f.nitProveedor, proveedor: f.proveedor, fecha: f.fecha, asistidaIa: Boolean(f.asistidaPorIa),
 });
 
-export async function corregirFactura(o: { hash: string; uid: string; email: string; datos: DatosManuales; confirmado: boolean }): Promise<ResultadoCorreccion> {
+export async function corregirFactura(o: { hash: string; uid: string; email: string; datos: DatosManuales; confirmado: boolean; camposSugeridosIa?: string[] }): Promise<ResultadoCorreccion> {
   const d = o.datos;
+  // Fase E3: campos que la IA sugirió y la persona aceptó sin cambiar (queda constancia; la decisión es de la persona).
+  const camposIa = o.camposSugeridosIa ?? [];
   // Las MISMAS reglas que las del OCR. Si algo no cuadra, la persona debe confirmar que revisó la imagen.
   const motivos = validar(aParcial(d));
   if (motivos.length > 0 && !o.confirmado) {
@@ -67,6 +69,9 @@ export async function corregirFactura(o: { hash: string; uid: string; email: str
       items: d.items, subtotal: d.subtotal, iva: d.iva, impoconsumo: d.impoconsumo, total: d.total,
       estado: "aceptada", motivos: [], validacionesIgnoradas: motivos,
       corregidaManualmente: true, corregidaPor: o.email, corregidaEn: Timestamp.now(),
+      // Una vez asistida, queda asistida: una edición posterior sin IA no borra la constancia de que se usó.
+      asistidaPorIa: camposIa.length > 0 || Boolean(f.asistidaPorIa),
+      camposSugeridosIa: camposIa.length > 0 ? camposIa : (f.camposSugeridosIa ?? []),
       ...(primeraVez ? { motivosOriginales: f.motivos } : {}),
     });
     if (!sIndiceNuevo.exists) tx.create(refIndiceNuevo, { hashArchivo: o.hash } satisfies IndiceNumero);
@@ -77,7 +82,7 @@ export async function corregirFactura(o: { hash: string; uid: string; email: str
     }
     if (sProceso.exists) {
       aplicarCambios(tx, f.procesoId, cambiosManual(
-        { ...importesDe({ ...d, nitProveedor: d.nitProveedor, proveedor: d.proveedor }), clienteNuevo },
+        { ...importesDe({ ...d, nitProveedor: d.nitProveedor, proveedor: d.proveedor, asistidaPorIa: camposIa.length > 0 }), clienteNuevo },
         primeraVez ? undefined : importesDe(f),
       ));
     }

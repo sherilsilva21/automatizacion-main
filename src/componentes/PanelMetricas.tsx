@@ -87,6 +87,8 @@ export function PanelMetricas() {
         {t.malLeidas > 0 && (
           <p className="rounded-lg border border-borde bg-superficie p-3 text-sm" data-testid="aviso-pendientes">
             De las {num(t.malLeidas)} mal leídas, <b className="cifra">{num(t.revisadasAMano)}</b> ya se revisaron a mano y <b className="cifra">{num(t.pendientes)}</b> esperan a una persona.
+            {/* Fase E3: cuánto ayudó la IA, contado aparte (no cambia «leídas correctamente», que mide a la máquina). */}
+            {(m.asistidasIa ?? 0) > 0 && <> <b className="cifra">{num(m.asistidasIa ?? 0)}</b> de las revisadas a mano usaron sugerencias de IA.</>}
             {t.pendientes > 0 && <Link href="/revision" className="ml-3 font-medium underline">Revisar las pendientes →</Link>}
           </p>
         )}

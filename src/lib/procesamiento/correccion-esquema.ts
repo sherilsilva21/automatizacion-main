@@ -38,8 +38,16 @@ export const esquemaDatosManuales = z.object({
   total: entero,
 });
 
+/** Tipo de entrada del esquema (lo que puede sugerir la IA en la Fase E3 tiene esta forma). */
+export type DatosManualesEntrada = z.infer<typeof esquemaDatosManuales>;
+
+/** Campos que la IA puede sugerir (Fase E3): los mismos del formulario. Viven aquí porque el esquema lo usan servidor y navegador. */
+export const CAMPOS_SUGERIBLES = ["numero", "fecha", "proveedor", "nitProveedor", "dvProveedor", "clienteDocumento", "clienteDv", "clienteNombre", "items", "subtotal", "iva", "impoconsumo", "total"] as const;
+
 export const esquemaCorreccion = z.object({
   datos: esquemaDatosManuales,
   /** La persona confirma que revisó la imagen aunque alguna validación automática no cuadre. */
   confirmado: z.boolean().default(false),
+  /** Fase E3: campos sugeridos por la IA que la persona aceptó SIN cambiarlos (vacío si no usó la IA). */
+  camposSugeridosIa: z.array(z.enum(CAMPOS_SUGERIBLES)).max(CAMPOS_SUGERIBLES.length).default([]),
 });

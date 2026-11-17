@@ -10,14 +10,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { aEntero, aParcial, soloDigitos, totalesSugeridos, type DatosManuales } from "@/lib/procesamiento/correccion";
 import { esquemaDatosManuales } from "@/lib/procesamiento/correccion-esquema";
 import { validar } from "@/lib/ocr/validador";
+import { camposAplicables } from "@/lib/ia/campos";
+import type { CampoIa, Sugerencias } from "@/lib/ia/sugerir";
 import { cop } from "./formato";
-import { IconoMal, IconoOk, botonPrimario, botonSecundario } from "./ui";
+import { Girando, IconoMal, IconoOk, botonPrimario, botonSecundario } from "./ui";
 
 interface ItemCampo { descripcion: string; cantidad: string; precio: string }
 type Total = "subtotal" | "iva" | "impoconsumo" | "total";
 interface Cargada {
   hash: string; archivo: string; procesoId: string; estado: "aceptada" | "revision"; motivos: string[]; motivosOriginales: string[];
   confianzaOcr: number; corregidaManualmente: boolean; corregidaPor: string | null;
+  /** Fase E3: hay una clave de IA configurada y la factura espera revisión. */
+  iaDisponible?: boolean;
   datos: {
     numero: string; fecha: string; proveedor: string; nitProveedor: string; dvProveedor: number | null; clienteDocumento: string; clienteDv: number | null;
     clienteNombre: string; items: { descripcion: string; cantidad: number; precioUnitario: number }[];
@@ -28,10 +32,14 @@ interface Cargada {
 const ENTRADA = "w-full rounded-md border border-borde bg-superficie px-2 py-1.5";
 const ZOOMS = [1, 1.6, 2.4, 3.4];
 
-function Campo({ etiqueta, children, ayuda }: { etiqueta: string; children: React.ReactNode; ayuda?: string }) {
+function Campo({ etiqueta, children, ayuda, ia = false }: { etiqueta: string; children: React.ReactNode; ayuda?: string; ia?: boolean }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium">{etiqueta}</span>
+      <span className="flex flex-wrap items-center gap-2 font-medium">
+        {etiqueta}
+        {/* Fase E3: el valor vino de la IA y la persona no lo ha cambiado (texto + color: nunca solo color). */}
+        {ia && <span className="rounded-full border border-manual bg-manual-suave px-2 text-xs font-normal" data-testid="sugerido-ia">sugerido por IA</span>}
+      </span>
       {children}
       {ayuda && <span className="text-xs text-texto2">{ayuda}</span>}
     </label>
@@ -60,6 +68,9 @@ export function FormularioFactura({ hash }: { hash: string }) {
   const [confirmo, setConfirmo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string; detalles?: string[] } | null>(null);
+  // Fase E3: valor que puso la IA en cada campo (para marcarlo y para saber si la persona lo aceptó sin cambiarlo).
+  const [aplicadoIa, setAplicadoIa] = useState<Partial<Record<CampoIa, string>>>({});
+  const [ia, setIa] = useState<{ estado: "inactiva" | "pidiendo" | "lista" | "error"; texto?: string }>({ estado: "inactiva" });
 
   // Carga la factura y precarga el formulario con lo que la máquina alcanzó a leer.
   useEffect(() => {
@@ -106,6 +117,72 @@ export function FormularioFactura({ hash }: { hash: string }) {
   const motivos = formato.success ? validar(aParcial(datos)) : [];
   const puedeGuardar = formato.success && !guardando && (motivos.length === 0 || confirmo);
 
+  // ── Fase E3 · asistente de IA ──
+  /** Valor actual de cada campo, como texto, para compararlo con lo que sugirió la IA. */
+  const valorActual = (k: CampoIa): string => {
+    switch (k) {
+      case "numero": return numero;
+      case "fecha": return fecha;
+      case "proveedor": return proveedor;
+      case "nitProveedor": return nit;
+      case "dvProveedor": return dvNit;
+      case "clienteDocumento": return docCliente;
+      case "clienteDv": return dvCliente;
+      case "clienteNombre": return nombreCliente;
+      case "items": return JSON.stringify(items);
+      default: return totales[k] ?? "";
+    }
+  };
+  const esIa = (k: CampoIa) => aplicadoIa[k] !== undefined && valorActual(k) === aplicadoIa[k];
+  const entrada = (k: CampoIa, extra = "") => `${ENTRADA} ${extra} ${esIa(k) ? "border-manual bg-manual-suave" : ""}`;
+
+  async function pedirSugerencia() {
+    setIa({ estado: "pidiendo" });
+    try {
+      const r = await fetch(`/api/facturas/${hash}/sugerir${giro ? `?rotar=${giro}` : ""}`, { method: "POST" });
+      const d = (await r.json().catch(() => ({}))) as { sugerencias?: Sugerencias; msIa?: number; msOcr?: number; error?: string };
+      if (!r.ok || !d.sugerencias) { setIa({ estado: "error", texto: d.error ?? "La IA no respondió; completa los campos a mano" }); return; }
+      const s = d.sugerencias;
+      // Un campo está «vacío» si no tiene valor; los totales, si la persona no los escribió (se calculan desde los ítems).
+      const itemsVacios = items.every((i) => !i.descripcion.trim() && !i.precio.trim());
+      const vacio = (k: CampoIa) => (k === "items" ? itemsVacios : valorActual(k).trim() === "");
+      const aplicar = camposAplicables(Object.keys(s) as CampoIa[], vacio, [...problemasFormato, ...motivos]);
+      const puestos: Partial<Record<CampoIa, string>> = {};
+      for (const k of aplicar) {
+        if (k === "items" && s.items) {
+          const nuevos = s.items.map((i) => ({ descripcion: i.descripcion, cantidad: String(i.cantidad), precio: String(i.precioUnitario) }));
+          setItems(nuevos);
+          puestos.items = JSON.stringify(nuevos);
+          continue;
+        }
+        const v = s[k];
+        if (v === undefined || typeof v === "object") continue;
+        const texto = String(v);
+        puestos[k] = texto;
+        if (k === "numero") setNumero(texto);
+        else if (k === "fecha") setFecha(texto);
+        else if (k === "proveedor") setProveedor(texto);
+        else if (k === "nitProveedor") setNit(texto);
+        else if (k === "dvProveedor") setDvNit(texto);
+        else if (k === "clienteDocumento") setDocCliente(texto);
+        else if (k === "clienteDv") setDvCliente(texto);
+        else if (k === "clienteNombre") setNombreCliente(texto);
+        else {
+          setTotales((t) => ({ ...t, [k]: texto }));
+          if (k === "impoconsumo" && Number(v) > 0) setAplicaInc(true);
+        }
+      }
+      setAplicadoIa((a) => ({ ...a, ...puestos }));
+      const n = Object.keys(puestos).length;
+      const segundos = (((d.msIa ?? 0) + (d.msOcr ?? 0)) / 1000).toLocaleString("es-CO", { maximumFractionDigits: 1 });
+      setIa({ estado: "lista", texto: n > 0
+        ? `La IA sugirió ${n} ${n === 1 ? "campo" : "campos"} (marcados «sugerido por IA») en ${segundos} s. Compáralos con la imagen antes de guardar.`
+        : "La IA no encontró nada nuevo para los campos vacíos o con error." });
+    } catch {
+      setIa({ estado: "error", texto: "La IA no respondió; completa los campos a mano" });
+    }
+  }
+
   const siguiente = useCallback(async () => {
     const r = await fetch("/api/facturas", { cache: "no-store" }).then((x) => (x.ok ? x.json() : { facturas: [] })).catch(() => ({ facturas: [] }));
     const otra = (r as { facturas: { hash: string }[] }).facturas.find((f) => f.hash !== hash);
@@ -118,7 +195,8 @@ export function FormularioFactura({ hash }: { hash: string }) {
     try {
       const r = await fetch(`/api/facturas/${hash}`, {
         method: "PUT", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ datos: { ...datos, impoconsumo: datos.impoconsumo }, confirmado: confirmo }),
+        // camposSugeridosIa: solo los que la persona dejó tal como los sugirió la IA (Fase E3).
+        body: JSON.stringify({ datos: { ...datos, impoconsumo: datos.impoconsumo }, confirmado: confirmo, camposSugeridosIa: (Object.keys(aplicadoIa) as CampoIa[]).filter(esIa) }),
       });
       const d = (await r.json().catch(() => ({}))) as { error?: string; motivos?: string[]; problemas?: string[] };
       if (!r.ok) { setMensaje({ tipo: "error", texto: d.error ?? `Error ${r.status}`, detalles: d.motivos ?? d.problemas }); return; }
@@ -141,7 +219,9 @@ export function FormularioFactura({ hash }: { hash: string }) {
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5">
       <p className="mb-3 text-sm"><Link className="underline" href="/revision">← Facturas pendientes</Link></p>
       <div className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Revisar factura <span className="text-texto2">{cargada.archivo}</span></h1>
+        {/* min-w-0 + overflow-wrap: los nombres de las fotos (foto_20261117_102316_3.jpg) no tienen espacios y, sin esto,
+            se salían de la pantalla en el celular. */}
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight">Revisar factura <span className="text-texto2 [overflow-wrap:anywhere]">{cargada.archivo}</span></h1>
         {cargada.corregidaManualmente && <span className="rounded-full border border-borde px-3 py-0.5 text-sm">ya corregida por {cargada.corregidaPor}: puedes volver a editarla</span>}
       </div>
 
@@ -172,28 +252,43 @@ export function FormularioFactura({ hash }: { hash: string }) {
 
         {/* ── Formulario ── */}
         <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); if (puedeGuardar) void guardar(); }} noValidate>
+          {cargada.iaDisponible && (
+            <section aria-labelledby="h-ia" className="flex flex-col gap-2 rounded-lg border border-manual bg-manual-suave p-4 text-sm" data-testid="asistente-ia">
+              <h2 id="h-ia" className="font-semibold">Asistente de IA</h2>
+              <p>
+                El texto de esta factura (leído por OCR, sin la imagen) <b>se enviará a un servicio externo de IA</b>. Solo rellena
+                campos vacíos o con error, y tú decides: compara cada sugerencia con la imagen antes de guardar.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" className={botonSecundario} onClick={() => void pedirSugerencia()} disabled={ia.estado === "pidiendo" || guardando} data-testid="sugerir-ia">
+                  {ia.estado === "pidiendo" ? <><Girando className="text-acento" /> Pidiendo sugerencias…</> : "Sugerir con IA"}
+                </button>
+                {ia.texto && <span role={ia.estado === "error" ? "alert" : "status"} className={ia.estado === "error" ? "text-malo" : ""} data-testid="ia-estado">{ia.texto}</span>}
+              </div>
+            </section>
+          )}
           <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold">Factura</legend>
-            <Campo etiqueta="Número"><input className={ENTRADA} value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="FE-000123" data-testid="f-numero" /></Campo>
-            <Campo etiqueta="Fecha de emisión"><input type="date" className={ENTRADA} value={fecha} onChange={(e) => setFecha(e.target.value)} data-testid="f-fecha" /></Campo>
-            <div className="sm:col-span-2"><Campo etiqueta="Razón social del proveedor"><input className={ENTRADA} value={proveedor} onChange={(e) => setProveedor(e.target.value)} data-testid="f-proveedor" /></Campo></div>
-            <Campo etiqueta="NIT del proveedor" ayuda="Sin puntos ni guion, sin el dígito de verificación">
-              <input className={ENTRADA} inputMode="numeric" value={nit} onChange={(e) => setNit(e.target.value)} data-testid="f-nit" />
+            <Campo etiqueta="Número" ia={esIa("numero")}><input className={entrada("numero")} value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="FE-000123" data-testid="f-numero" /></Campo>
+            <Campo etiqueta="Fecha de emisión" ia={esIa("fecha")}><input type="date" className={entrada("fecha")} value={fecha} onChange={(e) => setFecha(e.target.value)} data-testid="f-fecha" /></Campo>
+            <div className="sm:col-span-2"><Campo etiqueta="Razón social del proveedor" ia={esIa("proveedor")}><input className={entrada("proveedor")} value={proveedor} onChange={(e) => setProveedor(e.target.value)} data-testid="f-proveedor" /></Campo></div>
+            <Campo etiqueta="NIT del proveedor" ayuda="Sin puntos ni guion, sin el dígito de verificación" ia={esIa("nitProveedor")}>
+              <input className={entrada("nitProveedor")} inputMode="numeric" value={nit} onChange={(e) => setNit(e.target.value)} data-testid="f-nit" />
             </Campo>
-            <Campo etiqueta="Dígito de verificación"><input className={ENTRADA} inputMode="numeric" maxLength={1} value={dvNit} onChange={(e) => setDvNit(soloDigitos(e.target.value))} data-testid="f-dv-nit" /></Campo>
+            <Campo etiqueta="Dígito de verificación" ia={esIa("dvProveedor")}><input className={entrada("dvProveedor")} inputMode="numeric" maxLength={1} value={dvNit} onChange={(e) => setDvNit(soloDigitos(e.target.value))} data-testid="f-dv-nit" /></Campo>
           </fieldset>
 
           <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold">Cliente</legend>
-            <Campo etiqueta="Documento (NIT o CC)" ayuda="Sin puntos ni guion, sin el dígito de verificación">
-              <input className={ENTRADA} inputMode="numeric" value={docCliente} onChange={(e) => setDocCliente(e.target.value)} data-testid="f-doc-cliente" />
+            <Campo etiqueta="Documento (NIT o CC)" ayuda="Sin puntos ni guion, sin el dígito de verificación" ia={esIa("clienteDocumento")}>
+              <input className={entrada("clienteDocumento")} inputMode="numeric" value={docCliente} onChange={(e) => setDocCliente(e.target.value)} data-testid="f-doc-cliente" />
             </Campo>
-            <Campo etiqueta="Dígito de verificación"><input className={ENTRADA} inputMode="numeric" maxLength={1} value={dvCliente} onChange={(e) => setDvCliente(soloDigitos(e.target.value))} data-testid="f-dv-cliente" /></Campo>
-            <div className="sm:col-span-2"><Campo etiqueta="Nombre o razón social del cliente"><input className={ENTRADA} value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} data-testid="f-nombre-cliente" /></Campo></div>
+            <Campo etiqueta="Dígito de verificación" ia={esIa("clienteDv")}><input className={entrada("clienteDv")} inputMode="numeric" maxLength={1} value={dvCliente} onChange={(e) => setDvCliente(soloDigitos(e.target.value))} data-testid="f-dv-cliente" /></Campo>
+            <div className="sm:col-span-2"><Campo etiqueta="Nombre o razón social del cliente" ia={esIa("clienteNombre")}><input className={entrada("clienteNombre")} value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} data-testid="f-nombre-cliente" /></Campo></div>
           </fieldset>
 
           <fieldset className="flex flex-col gap-2 rounded-lg border border-borde bg-superficie p-4">
-            <legend className="px-1 text-sm font-semibold">Ítems</legend>
+            <legend className="px-1 text-sm font-semibold">Ítems{esIa("items") && <span className="ml-2 rounded-full border border-manual bg-manual-suave px-2 text-xs font-normal" data-testid="sugerido-ia">sugeridos por IA</span>}</legend>
             {items.map((it, i) => (
               <div key={i} className="flex flex-col gap-2 rounded-md border border-borde/70 p-3">
                 <Campo etiqueta={`Ítem ${i + 1} · descripción`}><input className={ENTRADA} value={it.descripcion} onChange={(e) => cambiarItem(i, "descripcion", e.target.value)} data-testid={`i-desc-${i}`} /></Campo>
@@ -210,11 +305,11 @@ export function FormularioFactura({ hash }: { hash: string }) {
 
           <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold">Totales</legend>
-            <Campo etiqueta="Valor antes de IVA"><input className={`${ENTRADA} cifra`} inputMode="numeric" value={mostrar("subtotal")} onChange={(e) => marcar("subtotal", e.target.value)} data-testid="f-subtotal" /></Campo>
-            <Campo etiqueta="IVA (19 %)"><input className={`${ENTRADA} cifra`} inputMode="numeric" value={mostrar("iva")} onChange={(e) => marcar("iva", e.target.value)} data-testid="f-iva" /></Campo>
+            <Campo etiqueta="Valor antes de IVA" ia={esIa("subtotal")}><input className={entrada("subtotal", "cifra")} inputMode="numeric" value={mostrar("subtotal")} onChange={(e) => marcar("subtotal", e.target.value)} data-testid="f-subtotal" /></Campo>
+            <Campo etiqueta="IVA (19 %)" ia={esIa("iva")}><input className={entrada("iva", "cifra")} inputMode="numeric" value={mostrar("iva")} onChange={(e) => marcar("iva", e.target.value)} data-testid="f-iva" /></Campo>
             <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={aplicaInc} onChange={(e) => setAplicaInc(e.target.checked)} data-testid="f-aplica-inc" /> La factura trae impoconsumo (4 %: telefonía móvil y datos)</label>
-            {aplicaInc && <Campo etiqueta="Impoconsumo"><input className={`${ENTRADA} cifra`} inputMode="numeric" value={mostrar("impoconsumo")} onChange={(e) => marcar("impoconsumo", e.target.value)} data-testid="f-impoconsumo" /></Campo>}
-            <Campo etiqueta="Total"><input className={`${ENTRADA} cifra`} inputMode="numeric" value={mostrar("total")} onChange={(e) => marcar("total", e.target.value)} data-testid="f-total" /></Campo>
+            {aplicaInc && <Campo etiqueta="Impoconsumo" ia={esIa("impoconsumo")}><input className={entrada("impoconsumo", "cifra")} inputMode="numeric" value={mostrar("impoconsumo")} onChange={(e) => marcar("impoconsumo", e.target.value)} data-testid="f-impoconsumo" /></Campo>}
+            <Campo etiqueta="Total" ia={esIa("total")}><input className={entrada("total", "cifra")} inputMode="numeric" value={mostrar("total")} onChange={(e) => marcar("total", e.target.value)} data-testid="f-total" /></Campo>
             <div className="flex items-end sm:col-span-2"><button type="button" className={botonSecundario} onClick={() => setTotales({})} data-testid="recalcular">Recalcular los totales desde los ítems</button></div>
           </fieldset>
 

@@ -65,6 +65,9 @@ export interface Factura {
   corregidaEn?: Timestamp;
   motivosOriginales?: string[];
   validacionesIgnoradas?: string[];
+  /** Fase E3: la persona aceptó al menos una sugerencia del asistente de IA (y cuáles, sin cambiarlas). */
+  asistidaPorIa?: boolean;
+  camposSugeridosIa?: string[];
 }
 
 /** indices_numero/{numero} */
@@ -112,6 +115,8 @@ export interface Metricas {
    * mano (lo mismo que «lo procesado»). Opcional: los lotes procesados antes de la Fase E2 no lo tienen.
    */
   porPeriodo?: Record<string, Importes>;
+  /** Fase E3 · de las revisadas a mano (`manuales`), cuántas usaron sugerencias de IA. No toca «leídas correctamente». */
+  asistidasIa?: number;
 }
 
 /** procesos/{procesoId} */

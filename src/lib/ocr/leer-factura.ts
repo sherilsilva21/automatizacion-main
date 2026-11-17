@@ -14,6 +14,8 @@ export interface FacturaLeida {
   confianza: number;
   /** Modos probados, en orden (para diagnóstico y métricas). */
   modos: ModoOcr[];
+  /** Texto del OCR que produjo `parcial` (Fase E3: es lo único que se envía al asistente de IA). */
+  texto: string;
 }
 
 export async function leerFactura(imagen: Buffer): Promise<FacturaLeida> {
@@ -41,8 +43,8 @@ export async function leerFactura(imagen: Buffer): Promise<FacturaLeida> {
     const parcialEnc = extraer(combinado);
     const motivosEnc = validar(parcialEnc);
     if (motivosEnc.length < motivos.length) {
-      ({ parcial, motivos } = { parcial: parcialEnc, motivos: motivosEnc });
+      ({ parcial, motivos, texto } = { parcial: parcialEnc, motivos: motivosEnc, texto: combinado });
     }
   }
-  return { parcial, motivos, confianza, modos };
+  return { parcial, motivos, confianza, modos, texto };
 }

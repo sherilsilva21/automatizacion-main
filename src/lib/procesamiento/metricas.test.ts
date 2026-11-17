@@ -165,3 +165,28 @@ describe("Fase E2 · métricas por periodo de IVA", () => {
     expect(sinDatosPorPeriodo(undefined)).toBe(false);
   });
 });
+
+describe("Fase E3 · facturas asistidas por IA", () => {
+  const base: ImportesManual = { subtotal: 1000, iva: 190, impoconsumo: 0, total: 1190, nitProveedor: "111", proveedor: "Uno S.A.S.", fecha: "2026-03-15" };
+  const ia = (c: ReturnType<typeof cambiosManual>) => c.filter((x) => x.ruta.join() === "metricas,asistidasIa");
+
+  it("la primera corrección con sugerencias aceptadas suma 1 a asistidasIa (y sigue siendo una manual)", () => {
+    const c = cambiosManual({ ...base, asistidaIa: true });
+    expect(ia(c)).toEqual([{ ruta: ["metricas", "asistidasIa"], incremento: 1 }]);
+    expect(c).toContainEqual({ ruta: ["metricas", "manuales", "n"], incremento: 1 });
+  });
+  it("sin IA no suma; volver a editar una ya asistida no la cuenta otra vez", () => {
+    expect(ia(cambiosManual(base))).toEqual([]);
+    expect(ia(cambiosManual({ ...base, asistidaIa: true }, { ...base, asistidaIa: true }))).toEqual([]);
+  });
+  it("una factura corregida sin IA y luego reeditada con IA cuenta una vez", () => {
+    expect(ia(cambiosManual({ ...base, asistidaIa: true }, base))).toHaveLength(1);
+  });
+  it("las asistidas NO cambian «leídas correctamente» y se suman entre lotes", () => {
+    const m = metricasDesdeEventos([{ tipo: "manual", clienteNuevo: false, ...base, asistidaIa: true }, { tipo: "manual", clienteNuevo: false, ...base }]);
+    expect(m.asistidasIa).toBe(1);
+    expect(m.aceptadas.n).toBe(0);
+    expect(calcularTasas(m).correctas).toBe(0);
+    expect(sumarMetricas([m, m, undefined]).asistidasIa).toBe(2);
+  });
+});

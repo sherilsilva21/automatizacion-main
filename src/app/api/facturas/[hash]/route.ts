@@ -4,6 +4,7 @@ import { firestore } from "@/lib/firebase/admin";
 import { COLECCIONES, type Factura } from "@/lib/modelo/tipos";
 import { corregirFactura } from "@/lib/procesamiento/corregir";
 import { esquemaCorreccion } from "@/lib/procesamiento/correccion-esquema";
+import { claveIa } from "@/lib/ia/sugerir";
 
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/facturas
   return Response.json({
     hash, archivo: f.archivo, procesoId: f.procesoId, estado: f.estado, motivos: f.motivos, confianzaOcr: f.confianzaOcr,
     corregidaManualmente: Boolean(f.corregidaManualmente), corregidaPor: f.corregidaPor ?? null, motivosOriginales: f.motivosOriginales ?? [],
+    // Fase E3: el botón «Sugerir con IA» solo aparece si hay una clave real y la factura espera revisión.
+    iaDisponible: claveIa() !== null && f.estado === "revision",
+    asistidaPorIa: Boolean(f.asistidaPorIa),
     datos: {
       numero: f.numero ?? "", fecha: f.fecha ?? "", proveedor: f.proveedor ?? "", nitProveedor: f.nitProveedor ?? "", dvProveedor: f.dvProveedor ?? null,
       clienteDocumento: f.clienteDocumento ?? f.clienteDocumentoLeido ?? "", clienteDv: f.clienteDv ?? null, clienteNombre: f.clienteNombre ?? "",
@@ -38,6 +42,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/facturas
     const problemas = cuerpo.error.issues.map((i) => `${i.path.join(".") || "datos"}: ${i.message}`);
     return Response.json({ error: "Datos no válidos", problemas }, { status: 400 });
   }
-  const r = await corregirFactura({ hash, uid: usuario.uid, email: usuario.email, datos: cuerpo.data.datos, confirmado: cuerpo.data.confirmado });
+  const r = await corregirFactura({
+    hash, uid: usuario.uid, email: usuario.email, datos: cuerpo.data.datos, confirmado: cuerpo.data.confirmado,
+    camposSugeridosIa: cuerpo.data.camposSugeridosIa, // Fase E3
+  });
   return r.ok ? Response.json(r) : Response.json({ error: r.error, motivos: r.motivos }, { status: r.status });
 }
