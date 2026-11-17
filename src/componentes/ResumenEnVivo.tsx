@@ -30,7 +30,7 @@ export function ResumenEnVivo({ lotes, titulo }: { lotes: LoteMetricas[]; titulo
           {num(hechas)} de {num(total)} facturas procesadas · {num(m.aceptadas.n + m.manuales.n)} aceptadas · {num(Math.max(0, m.revision.n + m.errores - m.manuales.n))} por revisar
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
         <Cifra etiqueta="Antes de IVA" valor={cop(subtotal)} />
         <Cifra etiqueta="IVA" valor={cop(iva)} />
         <Cifra etiqueta="Impoconsumo" valor={cop(inc)} />

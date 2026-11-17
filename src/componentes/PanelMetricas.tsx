@@ -98,7 +98,7 @@ export function PanelMetricas() {
 
       <section aria-labelledby="h-montos" className="flex flex-col gap-3">
         <h2 id="h-montos" className="text-lg font-semibold">Lo procesado · aceptadas y revisadas a mano</h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
           <Cifra grande etiqueta="Antes de IVA" valor={cop(procesado.subtotal)} />
           <Cifra grande etiqueta="IVA" valor={cop(procesado.iva)} />
           <Cifra grande etiqueta="Impoconsumo" valor={cop(procesado.impoconsumo)} />

@@ -28,12 +28,29 @@ export function Girando({ className = "" }: { className?: string }) {
   );
 }
 
+/**
+ * Tamaño de letra que hace caber la cifra en SU tarjeta: `cqi` es el 1 % del ancho de la tarjeta (container query),
+ * así que la letra se encoge según cuántos caracteres tiene la cifra y cuánto mide la tarjeta. Un «$0» se ve grande
+ * y un «$1.243.666.665» se reduce solo lo necesario. 0,62 em por carácter es un margen holgado para dígitos tabulares.
+ * Mínimo 0,875 rem (14 px) para que siga legible; si ni así cabe, la cifra se parte en dos líneas (overflow-wrap).
+ */
+function tamanoCifra(valor: ReactNode, maximoRem: number): string | undefined {
+  if (typeof valor !== "string" && typeof valor !== "number") return undefined; // otro contenido: tamaño de la clase
+  const largo = Math.max(String(valor).length, 4);
+  return `clamp(0.875rem, ${(100 / (largo * 0.62)).toFixed(2)}cqi, ${maximoRem}rem)`;
+}
+
 /** Tarjeta con una cifra (el valor va en tinta de texto; el color solo acompaña como marca). */
 export function Cifra({ etiqueta, valor, detalle, grande = false }: { etiqueta: string; valor: ReactNode; detalle?: ReactNode; grande?: boolean }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-borde bg-superficie p-4">
+    // @container: la tarjeta es el contenedor de referencia de `cqi`. min-w-0: en una cuadrícula, la tarjeta no
+    // puede crecer por su contenido (por defecto sí, y en el celular empujaba la cifra fuera de la pantalla).
+    <div className="@container flex min-w-0 flex-col gap-1 rounded-lg border border-borde bg-superficie p-4">
       <span className="text-sm text-texto2">{etiqueta}</span>
-      <span className={`cifra font-semibold leading-tight tracking-tight ${grande ? "text-3xl" : "text-2xl"}`}>{valor}</span>
+      <span
+        className={`cifra font-semibold leading-tight tracking-tight [overflow-wrap:anywhere] ${grande ? "text-3xl" : "text-2xl"}`}
+        style={{ fontSize: tamanoCifra(valor, grande ? 1.875 : 1.5) }}
+      >{valor}</span>
       {detalle ? <span className="text-xs text-texto2">{detalle}</span> : null}
     </div>
   );

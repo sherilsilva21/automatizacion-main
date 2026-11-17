@@ -100,7 +100,7 @@ export function VistaProceso({ id }: { id: string }) {
             <Progreso valor={hechas} max={total} etiqueta="Facturas procesadas" />
             <p className="cifra mt-1 text-sm text-texto2">{num(hechas)} de {num(total)} facturas procesadas</p>
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
             <Cifra etiqueta="Antes de IVA" valor={cop(m.aceptadas.subtotal + m.manuales.subtotal)} />
             <Cifra etiqueta="IVA" valor={cop(m.aceptadas.iva + m.manuales.iva)} />
             <Cifra etiqueta="Impoconsumo" valor={cop(m.aceptadas.impoconsumo + m.manuales.impoconsumo)} />
