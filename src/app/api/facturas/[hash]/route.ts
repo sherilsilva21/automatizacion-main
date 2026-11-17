@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { exigirUsuario } from "@/lib/auth/sesion";
+import { exigirEscritura, exigirUsuario } from "@/lib/auth/sesion";
 import { firestore } from "@/lib/firebase/admin";
 import { COLECCIONES, type Factura } from "@/lib/modelo/tipos";
 import { corregirFactura } from "@/lib/procesamiento/corregir";
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/facturas
     hash, archivo: f.archivo, procesoId: f.procesoId, estado: f.estado, motivos: f.motivos, confianzaOcr: f.confianzaOcr,
     corregidaManualmente: Boolean(f.corregidaManualmente), corregidaPor: f.corregidaPor ?? null, motivosOriginales: f.motivosOriginales ?? [],
     // Fase E3: el botón «Sugerir con IA» solo aparece si hay una clave real y la factura espera revisión.
-    iaDisponible: claveIa() !== null && f.estado === "revision",
+    iaDisponible: claveIa() !== null && f.estado === "revision" && usuario.rol === "completo", // la demo no gasta IA (E4)
     asistidaPorIa: Boolean(f.asistidaPorIa),
     datos: {
       numero: f.numero ?? "", fecha: f.fecha ?? "", proveedor: f.proveedor ?? "", nitProveedor: f.nitProveedor ?? "", dvProveedor: f.dvProveedor ?? null,
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/facturas
 
 /** Guarda lo que una persona ingresó o corrigió mirando la imagen. */
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/facturas/[hash]">) {
-  const usuario = await exigirUsuario(request);
+  const usuario = await exigirEscritura(request);
   if (usuario instanceof Response) return usuario;
   const { hash } = await ctx.params;
   if (!HASH.test(hash)) return Response.json({ error: "Identificador no válido" }, { status: 400 });

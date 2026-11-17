@@ -28,6 +28,7 @@ scripts/                  verificaciones y herramientas
 
 - **Variables de entorno**: las mismas de `.env.example` en Vercel (Production, Preview y Development), pegadas **sin comillas**. En Vercel, `@vercel/blob` se autentica con OIDC y elige el almacén por `BLOB_STORE_ID`: si ese valor no corresponde al store conectado al proyecto, todo acceso a Blob responde 500 aunque en local funcione.
 - **Duración de las funciones** (plan Hobby, máximo 300 s): `lote`, `finalizar`, `regenerar-excel` y `datos/borrar` 300 s; `iniciar` e `imagenes` 60 s.
+- **Modo demo de solo lectura** (opcional): con `DEMO_CORREO` (un usuario de Firebase Auth solo para la demo; su contraseña no se usa) y `DEMO_UID_DATOS` (el usuario cuyos lotes se muestran), `/login` ofrece «Ver demo». La demo recibe 403 en toda ruta que escribe o gasta recursos; se comprueba con `npx tsx scripts/probar-demo.ts <url>`.
 - **Política de los blobs**: las imágenes y los Excel de lotes antiguos se eliminarán automáticamente pasado un plazo (tarea programada, pendiente de implementar). Mientras tanto, la limpieza es manual: `npx tsx scripts/limpiar-lotes.ts <idLote>` para lotes concretos, o «Borrar todo» entre prácticas (borra Firestore y Blob de todos los usuarios; es irreversible).
 
 ## Diseño

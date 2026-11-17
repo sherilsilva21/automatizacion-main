@@ -13,7 +13,11 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/procesos
   const dueno = await procesoDelUsuario(id, usuario.uid);
   if (dueno instanceof Response) return dueno;
 
-  const archivos = (await colaArchivos(id).get()).docs.map((d) => d.data() as ArchivoCola);
+  // Fase E4: en la demo se leen como máximo 50 archivos de la cola (y sus facturas): ~2 lecturas por factura.
+  const tope = usuario.rol === "lectura" ? 50 : null;
+  const cola = await (tope ? colaArchivos(id).limit(tope + 1) : colaArchivos(id)).get();
+  const hayMas = tope !== null && cola.size > tope;
+  const archivos = cola.docs.slice(0, tope ?? undefined).map((d) => d.data() as ArchivoCola);
   const hashes = [...new Set(archivos.map((a) => a.hashArchivo).filter((h): h is string => Boolean(h)))];
   const db = firestore();
   const refs = hashes.map((h) => db.collection(COLECCIONES.facturas).doc(h));
@@ -29,5 +33,5 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/procesos
       };
     })
     .sort((a, b) => (a.numero ?? "~").localeCompare(b.numero ?? "~") || a.archivo.localeCompare(b.archivo));
-  return Response.json({ facturas });
+  return Response.json({ facturas, hayMas });
 }

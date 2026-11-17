@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { exigirUsuario } from "@/lib/auth/sesion";
+import { exigirEscritura, exigirUsuario } from "@/lib/auth/sesion";
 import { firestore } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { COLECCIONES, type Proceso } from "@/lib/modelo/tipos";
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
 /** Crea un proceso en estado `subiendo` (el navegador subirá las imágenes a procesos/<id>/). */
 export async function POST(request: NextRequest) {
-  const usuario = await exigirUsuario(request);
+  const usuario = await exigirEscritura(request);
   if (usuario instanceof Response) return usuario;
   const cuerpo = (await request.json().catch(() => null)) as { carpeta?: unknown } | null;
   const carpeta = typeof cuerpo?.carpeta === "string" ? cuerpo.carpeta.slice(0, 200) : "carpeta";

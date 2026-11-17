@@ -13,6 +13,7 @@ import { validar } from "@/lib/ocr/validador";
 import { camposAplicables } from "@/lib/ia/campos";
 import type { CampoIa, Sugerencias } from "@/lib/ia/sugerir";
 import { cop } from "./formato";
+import { useRol } from "./Rol";
 import { Girando, IconoMal, IconoOk, botonPrimario, botonSecundario } from "./ui";
 
 interface ItemCampo { descripcion: string; cantidad: string; precio: string }
@@ -48,6 +49,8 @@ function Campo({ etiqueta, children, ayuda, ia = false }: { etiqueta: string; ch
 
 export function FormularioFactura({ hash }: { hash: string }) {
   const router = useRouter();
+  // Fase E4: la demo ve el formulario pero no puede cambiarlo ni guardarlo (el servidor respondería 403).
+  const soloLectura = useRol().rol !== "completo";
   const [cargada, setCargada] = useState<Cargada | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0);
@@ -251,7 +254,7 @@ export function FormularioFactura({ hash }: { hash: string }) {
         </section>
 
         {/* ── Formulario ── */}
-        <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); if (puedeGuardar) void guardar(); }} noValidate>
+        <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); if (puedeGuardar && !soloLectura) void guardar(); }} noValidate>
           {cargada.iaDisponible && (
             <section aria-labelledby="h-ia" className="flex flex-col gap-2 rounded-lg border border-manual bg-manual-suave p-4 text-sm" data-testid="asistente-ia">
               <h2 id="h-ia" className="font-semibold">Asistente de IA</h2>
@@ -267,6 +270,8 @@ export function FormularioFactura({ hash }: { hash: string }) {
               </div>
             </section>
           )}
+          {/* `contents`: este fieldset solo agrupa para poder desactivar TODOS los campos de una vez en la demo. */}
+          <fieldset disabled={soloLectura} className="contents">
           <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold">Factura</legend>
             <Campo etiqueta="Número" ia={esIa("numero")}><input className={entrada("numero")} value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="FE-000123" data-testid="f-numero" /></Campo>
@@ -312,6 +317,7 @@ export function FormularioFactura({ hash }: { hash: string }) {
             <Campo etiqueta="Total" ia={esIa("total")}><input className={entrada("total", "cifra")} inputMode="numeric" value={mostrar("total")} onChange={(e) => marcar("total", e.target.value)} data-testid="f-total" /></Campo>
             <div className="flex items-end sm:col-span-2"><button type="button" className={botonSecundario} onClick={() => setTotales({})} data-testid="recalcular">Recalcular los totales desde los ítems</button></div>
           </fieldset>
+          </fieldset>
 
           {/* ── Validación en vivo ── */}
           <section aria-live="polite" className="flex flex-col gap-2 rounded-lg border border-borde bg-superficie p-4" data-testid="validacion">
@@ -323,10 +329,10 @@ export function FormularioFactura({ hash }: { hash: string }) {
             ) : (
               <>
                 <ul className="flex flex-col gap-1 text-sm">{motivos.map((m) => <li key={m} className="flex items-start gap-2"><IconoMal className="mt-0.5 text-malo" /> {m}</li>)}</ul>
-                <label className="mt-1 flex items-start gap-2 rounded-md border border-aviso p-2 text-sm">
+                {!soloLectura && <label className="mt-1 flex items-start gap-2 rounded-md border border-aviso p-2 text-sm">
                   <input type="checkbox" className="mt-1" checked={confirmo} onChange={(e) => setConfirmo(e.target.checked)} data-testid="confirmo" />
                   <span>Revisé la imagen y estos datos son los de la factura, aunque alguna validación no cuadre. <span className="text-texto2">(Queda registrado quién lo confirmó.)</span></span>
-                </label>
+                </label>}
               </>
             )}
           </section>
@@ -339,9 +345,13 @@ export function FormularioFactura({ hash }: { hash: string }) {
           )}
 
           <div className="flex flex-wrap items-center gap-3 pb-8">
-            <button type="submit" className={botonPrimario} disabled={!puedeGuardar} data-testid="guardar">
-              {guardando ? "Guardando…" : motivos.length > 0 ? "Guardar de todos modos" : "Guardar factura"}
-            </button>
+            {soloLectura ? (
+              <p className="text-sm text-texto2" data-testid="demo-sin-guardar">Modo demo: puedes ver la factura y su validación, pero no guardar cambios.</p>
+            ) : (
+              <button type="submit" className={botonPrimario} disabled={!puedeGuardar} data-testid="guardar">
+                {guardando ? "Guardando…" : motivos.length > 0 ? "Guardar de todos modos" : "Guardar factura"}
+              </button>
+            )}
             <button type="button" className={botonSecundario} onClick={() => void siguiente()} disabled={guardando}>Saltar a la siguiente</button>
           </div>
         </form>

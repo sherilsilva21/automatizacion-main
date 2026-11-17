@@ -5,14 +5,14 @@
 
 import { del, list } from "@vercel/blob";
 import type { NextRequest } from "next/server";
-import { exigirUsuario } from "@/lib/auth/sesion";
+import { exigirEscritura } from "@/lib/auth/sesion";
 import { firestore } from "@/lib/firebase/admin";
 import { COLECCIONES } from "@/lib/modelo/tipos";
 
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  const usuario = await exigirUsuario(request);
+  const usuario = await exigirEscritura(request);
   if (usuario instanceof Response) return usuario;
   const cuerpo = (await request.json().catch(() => null)) as { confirmacion?: unknown; forzar?: unknown } | null;
   if (cuerpo?.confirmacion !== "BORRAR") {

@@ -5,7 +5,7 @@
 
 import sharp from "sharp";
 import type { NextRequest } from "next/server";
-import { exigirUsuario } from "@/lib/auth/sesion";
+import { exigirEscritura } from "@/lib/auth/sesion";
 import { subirBlob } from "@/lib/blob";
 import { detectarTipoImagen, MAX_BYTES_IMAGEN, MAX_PIXELES, nombreConExtension } from "@/lib/imagen";
 import { loteAdmiteSubidas } from "@/lib/procesamiento/subidas";
@@ -16,7 +16,7 @@ export const maxDuration = 60;
 const error = (mensaje: string, status: number) => Response.json({ error: mensaje }, { status });
 
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/procesos/[id]/imagenes">) {
-  const usuario = await exigirUsuario(request);
+  const usuario = await exigirEscritura(request);
   if (usuario instanceof Response) return usuario;
   const { id } = await ctx.params;
   if (!/^[A-Za-z0-9]{10,40}$/.test(id) || !(await loteAdmiteSubidas(id, usuario.uid))) {

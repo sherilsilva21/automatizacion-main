@@ -2,16 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { autenticacion } from "@/lib/firebase/admin";
 import {
   correoPermitido,
+  DURACION_SESION_DEMO_MS,
   DURACION_SESION_MS,
+  esCorreoDemo,
   NOMBRE_COOKIE,
   respuesta401,
   usuarioDeSesion,
 } from "@/lib/auth/sesion";
 
-/** Quién soy (la interfaz lo usa para mostrar el correo). */
+/** Quién soy (la interfaz lo usa para mostrar el correo y, desde la Fase E4, el rol: «lectura» = modo demo). */
 export async function GET(request: NextRequest) {
   const usuario = await usuarioDeSesion(request);
-  return usuario ? Response.json({ email: usuario.email }) : respuesta401();
+  return usuario ? Response.json({ email: usuario.email, rol: usuario.rol }) : respuesta401();
 }
 
 /** Intercambia el ID token de Firebase por una cookie de sesión. */
@@ -22,11 +24,14 @@ export async function POST(request: NextRequest) {
   }
   try {
     const decodificado = await autenticacion().verifyIdToken(cuerpo.idToken);
-    if (!correoPermitido(decodificado.email)) {
+    // Fase E4: el usuario demo no está en USUARIOS_PERMITIDOS; entra con una sesión corta (2 h) y de solo lectura.
+    const demo = esCorreoDemo(decodificado.email);
+    if (!demo && !correoPermitido(decodificado.email)) {
       return Response.json({ error: "Este correo no está autorizado" }, { status: 403 });
     }
+    const duracion = demo ? DURACION_SESION_DEMO_MS : DURACION_SESION_MS;
     const cookie = await autenticacion().createSessionCookie(cuerpo.idToken, {
-      expiresIn: DURACION_SESION_MS,
+      expiresIn: duracion,
     });
     const respuesta = NextResponse.json({ email: decodificado.email });
     respuesta.cookies.set(NOMBRE_COOKIE, cookie, {
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: DURACION_SESION_MS / 1000,
+      maxAge: duracion / 1000,
     });
     return respuesta;
   } catch {

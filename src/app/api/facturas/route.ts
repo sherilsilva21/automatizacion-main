@@ -13,12 +13,14 @@ export async function GET(request: NextRequest) {
   let consulta = firestore().collection(COLECCIONES.facturas).where("uid", "==", usuario.uid).where("estado", "==", "revision");
   const procesoId = request.nextUrl.searchParams.get("procesoId");
   if (procesoId) consulta = consulta.where("procesoId", "==", procesoId);
-  const snap = await consulta.limit(200).get();
+  // Fase E4: la demo la abre cualquiera; se leen como máximo 50 (cada factura listada cuesta una lectura).
+  const tope = usuario.rol === "lectura" ? 50 : 200;
+  const snap = await consulta.limit(tope).get();
   const facturas = snap.docs
     .map((d) => {
       const f = d.data() as Factura;
       return { hash: d.id, archivo: f.archivo, procesoId: f.procesoId, numero: f.numero, proveedor: f.proveedor, total: f.total, motivos: f.motivos, confianzaOcr: f.confianzaOcr };
     })
     .sort((a, b) => a.archivo.localeCompare(b.archivo, "es", { numeric: true }));
-  return Response.json({ facturas, hayMas: snap.size === 200 });
+  return Response.json({ facturas, hayMas: snap.size === tope });
 }

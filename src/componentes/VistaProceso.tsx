@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Metricas } from "@/lib/modelo/tipos";
 import { calcularTasas, sumarMetricas } from "@/lib/procesamiento/metricas";
 import { cop, dormir, fechaHora, num, pct } from "./formato";
+import { SoloEscritura } from "./Rol";
 import { Cifra, Girando, IconoMal, IconoOk, Progreso, botonPrimario, botonSecundario } from "./ui";
 
 const SONDEO_MS = 4000;
@@ -28,6 +29,7 @@ export function VistaProceso({ id }: { id: string }) {
   const [estado, setEstado] = useState<Estado | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [facturas, setFacturas] = useState<FilaFactura[] | null>(null);
+  const [hayMas, setHayMas] = useState(false); // Fase E4: la demo ve como máximo 50 facturas por lote
   const [filtro, setFiltro] = useState<"todas" | "aceptada" | "revision">("todas");
   const [ahora, setAhora] = useState(0);
   const [regenerando, setRegenerando] = useState(false);
@@ -61,7 +63,7 @@ export function VistaProceso({ id }: { id: string }) {
   // Las facturas se leen una vez, al terminar (cuesta ~2 lecturas por factura).
   useEffect(() => {
     if (!terminado || facturas) return;
-    fetch(`/api/procesos/${id}/facturas`).then((r) => r.json()).then((d: { facturas: FilaFactura[] }) => setFacturas(d.facturas)).catch(() => setFacturas([]));
+    fetch(`/api/procesos/${id}/facturas`).then((r) => r.json()).then((d: { facturas: FilaFactura[]; hayMas?: boolean }) => { setFacturas(d.facturas); setHayMas(Boolean(d.hayMas)); }).catch(() => setFacturas([]));
   }, [terminado, id, facturas]);
 
   async function regenerarExcel() {
@@ -118,9 +120,11 @@ export function VistaProceso({ id }: { id: string }) {
             <p className="flex flex-wrap items-center gap-3">
               <a className={botonPrimario} href={`/api/procesos/${id}/excel`}>Descargar Excel</a>
               {terminado && m.manuales.n > 0 && (
-                <button className={botonSecundario} onClick={() => void regenerarExcel()} disabled={regenerando} data-testid="regenerar-excel">
-                  {regenerando ? "Generando…" : "Regenerar el Excel con las correcciones a mano"}
-                </button>
+                <SoloEscritura>{/* Fase E4: regenerar escribe en Blob; la demo solo descarga */}
+                  <button className={botonSecundario} onClick={() => void regenerarExcel()} disabled={regenerando} data-testid="regenerar-excel">
+                    {regenerando ? "Generando…" : "Regenerar el Excel con las correcciones a mano"}
+                  </button>
+                </SoloEscritura>
               )}
             </p>
           )}
@@ -131,6 +135,7 @@ export function VistaProceso({ id }: { id: string }) {
         <section className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold">Facturas ({num(visibles.length)})</h2>
+            {hayMas && <span className="text-sm text-texto2" data-testid="demo-tope">Modo demo: se muestran las primeras 50 facturas del lote.</span>}
             <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} className="rounded-md border border-borde bg-superficie px-2 py-1 text-sm" aria-label="Filtrar por estado">
               <option value="todas">Todas</option>
               <option value="aceptada">Aceptadas</option>

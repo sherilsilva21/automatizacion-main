@@ -65,7 +65,7 @@ export function ListaRevision() {
           </tbody>
         </table>
       </div>
-      {hayMas && <p className="text-sm text-texto2">Se muestran las primeras 200; al resolverlas aparecerán las demás.</p>}
+      {hayMas && <p className="text-sm text-texto2">Se muestran las primeras {num(pendientes.length)}; al resolverlas aparecerán las demás.</p>}
     </div>
   );
 }

@@ -7,10 +7,34 @@ import { autenticacion } from "@/lib/firebase/admin";
 
 export const NOMBRE_COOKIE = "sesion";
 export const DURACION_SESION_MS = 5 * 24 * 60 * 60 * 1000; // 5 días (Firebase permite 5 min – 14 días)
+/** Fase E4: la demo la puede abrir cualquiera; una sesión corta limita lo que puede gastar una visita. */
+export const DURACION_SESION_DEMO_MS = 2 * 60 * 60 * 1000; // 2 horas
+
+/** Fase E4 · `lectura`: modo demo; ve los lotes de DEMO_UID_DATOS y no puede escribir ni gastar recursos. */
+export type Rol = "completo" | "lectura";
 
 export interface Usuario {
+  /** En modo demo es DEMO_UID_DATOS (el dueño de los datos que se muestran), no el uid del usuario demo. */
   uid: string;
   email: string;
+  rol: Rol;
+}
+
+const limpiar = (v: string | undefined) => (v ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+
+/**
+ * Fase E4 · configuración de la demo, o null si no está completa (sin ella, el botón «Ver demo» no aparece).
+ * Se toleran comillas pegadas, como en USUARIOS_PERMITIDOS (el panel de Vercel no las quita).
+ */
+export function configDemo(): { correo: string; uidDatos: string } | null {
+  const correo = limpiar(process.env.DEMO_CORREO).toLowerCase();
+  const uidDatos = limpiar(process.env.DEMO_UID_DATOS);
+  return correo && uidDatos ? { correo, uidDatos } : null;
+}
+
+export function esCorreoDemo(email: string | undefined): boolean {
+  const demo = configDemo();
+  return Boolean(demo && email && email.toLowerCase() === demo.correo);
 }
 
 /** Correos autorizados (USUARIOS_PERMITIDOS, separados por comas). Sin la variable: nadie entra. */
@@ -33,8 +57,11 @@ export async function usuarioDeSesion(request: NextRequest): Promise<Usuario | n
   if (!cookie) return null;
   try {
     const decodificado = await autenticacion().verifySessionCookie(cookie, true);
+    // Demo: se presenta como el dueño de los datos, con rol de solo lectura (no necesita estar en USUARIOS_PERMITIDOS).
+    const demo = configDemo();
+    if (demo && esCorreoDemo(decodificado.email)) return { uid: demo.uidDatos, email: decodificado.email!, rol: "lectura" };
     if (!correoPermitido(decodificado.email)) return null;
-    return { uid: decodificado.uid, email: decodificado.email! };
+    return { uid: decodificado.uid, email: decodificado.email!, rol: "completo" };
   } catch {
     return null;
   }
@@ -47,4 +74,14 @@ export async function usuarioDeSesion(request: NextRequest): Promise<Usuario | n
  */
 export async function exigirUsuario(request: NextRequest): Promise<Usuario | Response> {
   return (await usuarioDeSesion(request)) ?? respuesta401();
+}
+
+/**
+ * Fase E4 · para TODA ruta que escribe o gasta recursos (CPU, Blob, Firestore, IA): como `exigirUsuario`, pero el
+ * modo demo recibe 403. Esta es la seguridad; ocultar botones en la interfaz es solo comodidad.
+ */
+export async function exigirEscritura(request: NextRequest): Promise<Usuario | Response> {
+  const u = await exigirUsuario(request);
+  if (u instanceof Response) return u;
+  return u.rol === "lectura" ? Response.json({ error: "Modo demo: solo lectura" }, { status: 403 }) : u;
 }

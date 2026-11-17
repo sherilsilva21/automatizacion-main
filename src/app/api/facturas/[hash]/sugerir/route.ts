@@ -1,7 +1,7 @@
 import { get } from "@vercel/blob";
 import sharp from "sharp";
 import type { NextRequest } from "next/server";
-import { exigirUsuario } from "@/lib/auth/sesion";
+import { exigirEscritura } from "@/lib/auth/sesion";
 import { firestore } from "@/lib/firebase/admin";
 import { claveIa, ErrorIa, liberarSugerencia, reservarSugerencia, sugerirDatos } from "@/lib/ia/sugerir";
 import { COLECCIONES, type Factura } from "@/lib/modelo/tipos";
@@ -19,7 +19,7 @@ const ROTACIONES = new Set([90, 180, 270]);
  * sigue siendo PUT /api/facturas/[hash], que decide la persona. Si la IA falla, 502 con un mensaje para seguir a mano.
  */
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/facturas/[hash]/sugerir">) {
-  const usuario = await exigirUsuario(request);
+  const usuario = await exigirEscritura(request);
   if (usuario instanceof Response) return usuario;
   const clave = claveIa();
   if (!clave) return Response.json({ error: "El asistente de IA no está configurado" }, { status: 503 });
