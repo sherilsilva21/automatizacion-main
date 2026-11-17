@@ -59,11 +59,12 @@ export function PanelMetricas() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex max-w-full items-center gap-2 text-sm">
           Mostrando
+          {/* min-w-0 + max-w-full: el select mide lo que su opción más larga; sin esto se sale a 375 px. */}
           <select
             value={seleccion} onChange={(e) => setSeleccion(e.target.value)} data-testid="selector-lote"
-            className="rounded-md border border-borde bg-superficie px-2 py-1.5"
+            className="min-w-0 max-w-full rounded-md border border-borde bg-superficie px-2 py-1.5"
           >
             <option value="todos">Todos los lotes ({lotes.length})</option>
             {lotes.map((l) => (
@@ -115,7 +116,9 @@ export function PanelMetricas() {
         {proveedores.length === 0 ? (
           <p className="text-sm text-texto2">Aún no hay facturas aceptadas.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
+            {/* `relative`: los `sr-only` de la tabla son absolutos; sin un ancestro posicionado escapan del
+                recorte de overflow-x-auto y ensanchan toda la página en móvil. */}
             <table className="w-full text-left text-sm" data-testid="tabla-proveedores">
               <thead>
                 <tr className="border-b border-borde text-texto2">
@@ -157,7 +160,7 @@ export function PanelMetricas() {
 
       <section aria-labelledby="h-lotes" className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
         <h2 id="h-lotes" className="text-lg font-semibold">Métricas por lote</h2>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">{/* `relative`: ver la tabla de proveedores */}
           <table className="w-full text-left text-sm" data-testid="tabla-lotes">
             <thead>
               <tr className="border-b border-borde text-texto2">

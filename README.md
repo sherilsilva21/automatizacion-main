@@ -4,19 +4,11 @@ Aplicación web (Next.js 16, desplegada en Vercel) que automatiza el procesamien
 
 Proyecto de la clase *Tendencias en desarrollo de software* (tema: **automatización**).
 
-## Trabajar con un agente de IA
-
-- **Claude Code** lee [`CLAUDE.md`](CLAUDE.md) y aplica los permisos de [`.claude/settings.json`](.claude/settings.json) (por ejemplo, no puede leer `.env`).
-- **Otros agentes** leen [`AGENTS.md`](AGENTS.md), con el mismo contenido.
-- Ambos son cortos a propósito: el detalle de cada fase está en [`docs/guia/`](docs/guia/) y el agente lo abre solo cuando se trabaja esa fase.
-
-Para empezar una sesión, dile al agente: *«Lee CLAUDE.md. Hoy trabajamos la Fase N.»* Orden de las fases: 0 cuentas → 1 proyecto base → 2 modelo de datos → A autenticación → 4 extractor → 5 OCR en Vercel → 3 subida → 6 lotes y guardado → 7 Excel → 8 interfaz y métricas → 9 revisión manual → D operación. Después, cuatro mejoras propias: E1 fotos con la cámara → E2 reporte de IVA por bimestre → E3 asistente de IA en la revisión → E4 modo demo de solo lectura. Si eres la persona que guía al agente, lee primero [`docs/guia/estudiante.md`](docs/guia/estudiante.md).
-
 ## Ejecutar en local
 
 ```bash
 npm install
-cp .env.example .env                 # rellénalo (docs/guia/fase-0.md explica cada variable; nunca subas .env a Git)
+cp .env.example .env                 # rellénalo con tus credenciales; nunca subas .env a Git
 npx tsx scripts/probar-conexion.ts   # debe imprimir Firestore OK, Auth OK, Blob OK
 npm run dev                          # http://localhost:3000
 ```
@@ -26,15 +18,12 @@ Comprobaciones antes de cada commit: `npm run lint`, `npx tsc --noEmit`, `npm te
 ## Estructura
 
 ```
-CLAUDE.md / AGENTS.md     reglas e índice para el agente (cortos)
-.claude/settings.json     permisos de Claude Code
-docs/guia/                una guía por fase y por tema (arquitectura, diseño, problemas, cuotas…)
 src/app/                  páginas y API (Route Handlers)
 src/componentes/          interfaz
 src/lib/                  OCR, validación, procesamiento por lotes, Excel, Firebase, Blob
-scripts/                  verificaciones y herramientas (ver docs/guia/comandos.md)
+scripts/                  verificaciones y herramientas
 ```
 
 ## Diseño
 
-Los colores son tokens por rol en `src/app/globals.css`, con modo claro y oscuro. La guía está en [`docs/guia/diseno.md`](docs/guia/diseno.md).
+Los colores son tokens por rol en `src/app/globals.css`, con modo claro y oscuro.

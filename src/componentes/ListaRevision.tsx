@@ -42,7 +42,9 @@ export function ListaRevision() {
         <b className="cifra text-lg">{num(pendientes.length)}{hayMas ? "+" : ""} {pendientes.length === 1 ? "factura espera" : "facturas esperan"} a una persona</b>
         <Link href={`/revision/${pendientes[0].hash}`} className={botonPrimario} data-testid="empezar">Empezar por la primera</Link>
       </p>
-      <div className="overflow-x-auto rounded-lg border border-borde bg-superficie">
+      <div className="relative overflow-x-auto rounded-lg border border-borde bg-superficie">
+        {/* `relative`: el `sr-only` del encabezado es absoluto; sin un ancestro posicionado escapa del
+            recorte de overflow-x-auto y ensancha la página en móvil (mismo caso que PanelMetricas). */}
         <table className="w-full text-left text-sm" data-testid="tabla-revision">
           <thead>
             <tr className="border-b border-borde text-texto2">

@@ -40,6 +40,19 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# material del agente de IA: solo local (Claude Code lo lee del disco)
+CLAUDE.md
+AGENTS.md
+/docs/guia/
+/.claude/
+
 # carpeta local con las facturas de prueba y su verdad.json (nunca se suben a Git)
 /salida/
 !.env.example
+
+
+# material del agente de IA: solo local
+CLAUDE.md
+AGENTS.md
+/docs/guia/
+/.claude/
