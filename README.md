@@ -13,7 +13,7 @@ npx tsx scripts/probar-conexion.ts   # debe imprimir Firestore OK, Auth OK, Blob
 npm run dev                          # http://localhost:3000
 ```
 
-Comprobaciones antes de cada commit: `npm run lint`, `npx tsc --noEmit`, `npm test`.
+Comprobaciones antes de cada commit: `npm run lint`, `npx tsc --noEmit`, `npm test`. Si cambias la interfaz: `npx tsx scripts/revisar-ui.ts <url> <carpetaCapturas>` (claro y oscuro, 375 y 1280 px; falla con desbordes, errores de consola o violaciones de accesibilidad serias).
 
 ## Estructura
 

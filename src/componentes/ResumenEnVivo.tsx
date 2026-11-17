@@ -26,7 +26,7 @@ export function ResumenEnVivo({ lotes, titulo }: { lotes: LoteMetricas[]; titulo
     <section aria-label={titulo} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-semibold">{titulo}</h3>
-        <span className="cifra text-sm text-texto2">
+        <span className="cifra text-sm text-tinta-suave">
           {num(hechas)} de {num(total)} facturas procesadas · {num(m.aceptadas.n + m.manuales.n)} aceptadas · {num(Math.max(0, m.revision.n + m.errores - m.manuales.n))} por revisar
         </span>
       </div>

@@ -17,11 +17,14 @@
   --acento: #1e3f8a;
   --acento-hover: #16306b;
   --sobre-acento: #ffffff;
+  /* Panel de marca (presentación del login): azul tinta en claro; en oscuro, marino profundo (el acento claro deslumbra). */
+  --marca: #1e3f8a;
+  --sobre-marca: #ffffff;
   --aceptada: #18794e;
   --revision: #a15c07;
   --error: #b42318;
   --mezcla-suave: 12%;
-  /* Plex se activa cuando se instale con next/font/local (ver docs/guia/diseno.md); mientras, fuentes del sistema. */
+  /* IBM Plex autoalojada con next/font/local (layout.tsx define --fuente-plex-*); si falla, fuentes del sistema. */
   --fuente-ui: var(--fuente-plex-sans, ui-sans-serif), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --fuente-datos: var(--fuente-plex-mono, ui-monospace), "SFMono-Regular", Menlo, Consolas, monospace;
 }
@@ -38,6 +41,8 @@
     --acento: #8fa9f0;
     --acento-hover: #aec1f5;
     --sobre-acento: #0e1417;
+    --marca: #172a52;
+    --sobre-marca: #e4eae7;
     --aceptada: #5cc793;
     --revision: #e9b04d;
     --error: #f2877c;
@@ -56,6 +61,8 @@
   --acento: #8fa9f0;
   --acento-hover: #aec1f5;
   --sobre-acento: #0e1417;
+  --marca: #172a52;
+  --sobre-marca: #e4eae7;
   --aceptada: #5cc793;
   --revision: #e9b04d;
   --error: #f2877c;
@@ -73,6 +80,8 @@
   --color-acento: var(--acento);
   --color-acento-hover: var(--acento-hover);
   --color-sobre-acento: var(--sobre-acento);
+  --color-marca: var(--marca);
+  --color-sobre-marca: var(--sobre-marca);
   --color-acento-suave: color-mix(in oklab, var(--acento) var(--mezcla-suave), var(--superficie));
 
   --color-aceptada: var(--aceptada);
@@ -98,24 +107,9 @@
   --radius-control: 6px;
   --radius-panel: 10px;
 
-  /*
-   * Nombres anteriores (los usan los componentes actuales). Apuntan a los tokens nuevos para que
-   * toda la app tome la paleta sin romper nada. Al migrar un componente, cambia el nombre viejo por
-   * el nuevo; cuando ya nadie use estos alias, bórralos.
-   *   background→papel · foreground→tinta · texto2→tinta-suave · borde→linea · pista→superficie-2
-   *   acento-texto→sobre-acento · bueno→aceptada · malo→error · aviso→revision
-   * Ojo: algunos componentes pintan «en revisión» con `malo` (rojo). Según docs/guia/diseno.md
-   * debe ser `revision` (ámbar): es trabajo pendiente, no un error.
-   */
-  --color-background: var(--papel);
-  --color-foreground: var(--tinta);
-  --color-texto2: var(--tinta-suave);
-  --color-borde: var(--linea);
-  --color-pista: var(--superficie-2);
-  --color-acento-texto: var(--sobre-acento);
-  --color-bueno: var(--aceptada);
-  --color-malo: var(--error);
-  --color-aviso: var(--revision);
+  /* Ya estaba en la base: no es éxito ni fallo, va en tinta suave (fondo: superficie-2). */
+  --color-duplicada: var(--tinta-suave);
+  --color-duplicada-suave: var(--superficie-2);
 }
 
 @layer base {
@@ -159,6 +153,81 @@
 
 /* El sello de estado: el único elemento «expresivo» de la app (detalle y revisión de una factura). */
 @layer components {
+  /*
+   * Tabla «libro contable»: cabecera en superficie-2, filas separadas por `linea`, cifras (.num) a la derecha y
+   * tabulares. Una sola definición para todas las tablas (antes cada una repetía bordes y rellenos a mano).
+   */
+  .tabla {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.875rem;
+  }
+  .tabla th,
+  .tabla td {
+    padding: 0.625rem 0.75rem;
+    vertical-align: top;
+  }
+  .tabla thead th {
+    background: var(--superficie-2);
+    color: var(--tinta-suave);
+    font-weight: 500;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--linea);
+  }
+  .tabla tbody tr + tr {
+    border-top: 1px solid var(--linea);
+  }
+  .tabla tbody tr:hover {
+    background: color-mix(in oklab, var(--superficie-2) 55%, var(--superficie));
+  }
+  .tabla tfoot td {
+    border-top: 2px solid var(--linea);
+    font-weight: 600;
+  }
+  .tabla .num {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Enlace en texto: acento + subrayado (no solo color, para quien no distingue el azul). */
+  .enlace {
+    color: var(--acento);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+  .enlace:hover {
+    color: var(--acento-hover);
+    text-decoration-thickness: 2px;
+  }
+
+  /* Campo de formulario: mismo alto (40 px, objetivo táctil), borde y foco en toda la app. */
+  .campo {
+    width: 100%;
+    min-height: 2.5rem;
+    border: 1px solid var(--linea);
+    border-radius: 6px;
+    background: var(--superficie);
+    color: var(--tinta);
+    padding: 0.375rem 0.625rem;
+  }
+  .campo:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--tinta-suave) 55%, var(--linea));
+  }
+  .campo:focus-visible {
+    outline: 2px solid var(--acento);
+    outline-offset: 1px;
+    border-color: var(--acento);
+  }
+  .campo:disabled {
+    background: var(--superficie-2);
+    color: var(--tinta-suave);
+    cursor: not-allowed;
+  }
+
   .sello {
     display: inline-flex;
     align-items: center;
@@ -171,10 +240,11 @@
     transform: rotate(-3deg);
   }
 
-  .sello-aceptada { color: var(--aceptada); background: color-mix(in oklab, var(--aceptada) var(--mezcla-suave), var(--superficie)); }
-  .sello-revision { color: var(--revision); background: color-mix(in oklab, var(--revision) var(--mezcla-suave), var(--superficie)); }
-  .sello-manual { color: var(--acento); background: color-mix(in oklab, var(--acento) var(--mezcla-suave), var(--superficie)); }
-  .sello-error { color: var(--error); background: color-mix(in oklab, var(--error) var(--mezcla-suave), var(--superficie)); }
+  .sello-aceptada { color: color-mix(in oklab, var(--aceptada) 72%, var(--tinta)); background: color-mix(in oklab, var(--aceptada) var(--mezcla-suave), var(--superficie)); }
+  .sello-revision { color: color-mix(in oklab, var(--revision) 72%, var(--tinta)); background: color-mix(in oklab, var(--revision) var(--mezcla-suave), var(--superficie)); }
+  .sello-manual { color: color-mix(in oklab, var(--acento) 85%, var(--tinta)); background: color-mix(in oklab, var(--acento) var(--mezcla-suave), var(--superficie)); }
+  .sello-duplicada { color: var(--tinta-suave); background: var(--superficie-2); }
+  .sello-error { color: color-mix(in oklab, var(--error) 80%, var(--tinta)); background: color-mix(in oklab, var(--error) var(--mezcla-suave), var(--superficie)); }
 
   @media (prefers-reduced-motion: no-preference) {
     .sello-nuevo {

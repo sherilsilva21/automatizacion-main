@@ -96,7 +96,7 @@ export function Motor() {
 
   if (activos === 0) return null;
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-borde bg-superficie px-3 py-1 text-xs" role="status">
+    <span className="inline-flex items-center gap-2 rounded-full border border-acento/30 bg-acento-suave px-3 py-1 text-xs font-medium" role="status" aria-live="polite">
       <Girando className="text-acento" />
       Procesando {activos} {activos === 1 ? "lote" : "lotes"}…
     </span>

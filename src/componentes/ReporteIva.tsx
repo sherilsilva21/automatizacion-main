@@ -11,7 +11,7 @@ import { MESES_POR_PERIODO_IVA } from "@/lib/ocr/constantes";
 import { importesVacios, sinDatosPorPeriodo, sumarMetricas } from "@/lib/procesamiento/metricas";
 import { nombrePeriodo, partesPeriodo, periodosDelAnio } from "@/lib/reportes/periodos";
 import { cop, num } from "./formato";
-import { botonSecundario } from "./ui";
+import { Aviso, Boton, Esqueleto, IconoDescarga, IconoEstado, Tarjeta, claseBoton } from "./ui";
 import { useMetricas } from "./useMetricas";
 
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -68,10 +68,10 @@ function GraficoIva({ filas, anio }: { filas: Fila[]; anio: number }) {
             <title>{`${nombrePeriodo(f.clave)}\nIVA ${cop(f.iva)} · base ${cop(f.subtotal)} · ${num(f.n)} facturas`}</title>
             <rect x={i * banda} y={0} width={banda} height={ALTO} fill="transparent" />
             {alto > 0 && <path d={rutaBarra(x, y, BARRA, alto)} className="fill-acento transition-opacity group-hover:opacity-80" />}
-            <text x={x + BARRA / 2} y={(alto > 0 ? y : base) - 8} textAnchor="middle" className={`cifra text-[12px] ${f.iva > 0 ? "fill-tinta font-medium" : "fill-texto2"}`}>
+            <text x={x + BARRA / 2} y={(alto > 0 ? y : base) - 8} textAnchor="middle" className={`cifra text-[12px] ${f.iva > 0 ? "fill-tinta font-medium" : "fill-tinta-suave"}`}>
               {f.iva > 0 ? `$${compacto.format(f.iva)}` : "$0"}
             </text>
-            <text x={x + BARRA / 2} y={base + 20} textAnchor="middle" className="fill-texto2 text-[12px]">{etiquetaCorta(f.clave)}</text>
+            <text x={x + BARRA / 2} y={base + 20} textAnchor="middle" className="fill-tinta-suave text-[12px]">{etiquetaCorta(f.clave)}</text>
           </g>
         );
       })}
@@ -92,36 +92,42 @@ export function ReporteIva() {
 
   if (cargando) {
     return (
-      <div className="flex flex-col gap-4" aria-busy="true" aria-label="Cargando el reporte">
-        <div className="h-9 w-48 animate-pulse rounded-md bg-pista" />
-        <div className="h-60 animate-pulse rounded-lg bg-pista" />
-        <div className="h-40 animate-pulse rounded-lg bg-pista" />
+      <div className="flex flex-col gap-4" role="status" aria-busy="true" aria-label="Cargando el reporte">
+        <Esqueleto className="h-10 w-72" />
+        <Esqueleto className="h-72 rounded-panel" />
+        <Esqueleto className="h-48 rounded-panel" />
       </div>
     );
   }
   if (error) {
     return (
-      <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-malo p-4 text-sm">
-        No se pudo cargar el reporte ({error}). Revisa tu conexión e inténtalo de nuevo.
-        <button className={botonSecundario} onClick={() => void refrescar()}>Reintentar</button>
-      </div>
+      <Aviso tono="error">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span>No se pudo cargar el reporte ({error}). Revisa tu conexión e inténtalo de nuevo.</span>
+          <Boton onClick={() => void refrescar()}>Reintentar</Boton>
+        </div>
+      </Aviso>
     );
   }
 
   const avisoSinDatos = sinDatos > 0 && (
-    <p className="rounded-lg border border-aviso p-3 text-sm" data-testid="aviso-sin-periodo">
+    <p className="flex items-start gap-2 rounded-panel border border-revision/40 bg-revision-suave px-4 py-3 text-sm" data-testid="aviso-sin-periodo">
+      <IconoEstado estado="revision" className="mt-0.5" /><span>
       {num(sinDatos)} {sinDatos === 1 ? "lote se procesó" : "lotes se procesaron"} antes de este reporte y no {sinDatos === 1 ? "tiene" : "tienen"} datos
-      por periodo: no {sinDatos === 1 ? "está incluido" : "están incluidos"} abajo. Recalcúlalos con <code>scripts/recalcular-metricas.ts</code>.
-    </p>
+      por periodo: no {sinDatos === 1 ? "está incluido" : "están incluidos"} abajo. Recalcúlalos con <code className="font-mono text-xs">scripts/recalcular-metricas.ts</code>.
+    </span></p>
   );
 
   if (anios.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         {avisoSinDatos}
-        <p className="rounded-lg border border-borde bg-superficie p-5 text-texto2" data-testid="reporte-vacio">
-          Aún no hay facturas aceptadas con fecha de emisión para el reporte. <Link href="/" className="font-medium underline">Procesa facturas</Link> o revisa a mano las pendientes.
-        </p>
+        <div className="flex flex-col items-start gap-2 rounded-panel border border-dashed border-linea bg-superficie p-6" data-testid="reporte-vacio">
+          <p className="font-semibold">Aún no hay datos para el reporte.</p>
+          <p className="text-sm text-tinta-suave">
+            Hacen falta facturas aceptadas con fecha de emisión. <Link href="/" className="enlace">Procesa facturas</Link> o revisa a mano las pendientes.
+          </p>
+        </div>
       </div>
     );
   }
@@ -134,65 +140,65 @@ export function ReporteIva() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm">
-          Año
+          <span className="text-tinta-suave">Año</span>
           <select
             value={anio} onChange={(e) => setAnioElegido(Number(e.target.value))} data-testid="selector-anio"
-            className="cifra rounded-md border border-borde bg-superficie px-2 py-1.5"
+            className="campo cifra w-auto"
           >
             {anios.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
-        <a className={botonSecundario} href={`/api/reportes/iva?anio=${anio}`} data-testid="descargar-reporte">Descargar este reporte (Excel)</a>
+        <a className={claseBoton("secundario")} href={`/api/reportes/iva?anio=${anio}`} data-testid="descargar-reporte"><IconoDescarga /> Descargar este reporte (Excel)</a>
       </div>
 
       {avisoSinDatos}
 
-      <section aria-labelledby="h-grafico" className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
+      <Tarjeta aria-labelledby="h-grafico" className="flex flex-col gap-3">
         <h2 id="h-grafico" className="text-lg font-semibold">IVA por bimestre · {anio}</h2>
         <GraficoIva filas={filas} anio={anio} />
-      </section>
+      </Tarjeta>
 
-      <section aria-labelledby="h-tabla" className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
+      <Tarjeta aria-labelledby="h-tabla" className="flex flex-col gap-3">
         <h2 id="h-tabla" className="text-lg font-semibold">Cifras exactas · {anio}</h2>
         {/* `relative`: mismo motivo que en Métricas (que nada escape del scroll horizontal en el celular). */}
-        <div className="relative overflow-x-auto">
-          <table className="w-full text-left text-sm" data-testid="tabla-iva">
+        <div className="relative overflow-x-auto rounded-control border border-linea" tabIndex={0} role="region" aria-label="Cifras exactas del IVA por bimestre">
+          <table className="tabla" data-testid="tabla-iva">
             <thead>
-              <tr className="border-b border-borde text-texto2">
-                <th className="py-2 pr-3 font-medium">Periodo</th><th className="pr-3 text-right font-medium">Facturas</th>
-                <th className="pr-3 text-right font-medium">Base gravable</th><th className="pr-3 text-right font-medium">IVA</th>
-                <th className="pr-3 text-right font-medium">Impoconsumo</th><th className="text-right font-medium">Total</th>
+              <tr>
+                <th>Periodo</th><th className="num">Facturas</th>
+                <th className="num">Base gravable</th><th className="num">IVA</th>
+                <th className="num">Impoconsumo</th><th className="num">Total</th>
               </tr>
             </thead>
             <tbody>
               {filas.map((f) => (
-                <tr key={f.clave} className="border-b border-borde/60">
-                  <td className="py-2 pr-3 whitespace-nowrap">{nombrePeriodo(f.clave)}</td>
-                  <td className="cifra pr-3 text-right">{num(f.n)}</td>
-                  <td className="cifra pr-3 text-right">{cop(f.subtotal)}</td>
-                  <td className="cifra pr-3 text-right">{cop(f.iva)}</td>
-                  <td className="cifra pr-3 text-right">{cop(f.impoconsumo)}</td>
-                  <td className="cifra text-right">{cop(f.total)}</td>
+                <tr key={f.clave}>
+                  <td className="whitespace-nowrap">{nombrePeriodo(f.clave)}</td>
+                  <td className="num">{num(f.n)}</td>
+                  <td className="num">{cop(f.subtotal)}</td>
+                  <td className="num font-medium">{cop(f.iva)}</td>
+                  <td className="num">{cop(f.impoconsumo)}</td>
+                  <td className="num">{cop(f.total)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="font-semibold">
-                <td className="py-2 pr-3">Total {anio}</td>
-                <td className="cifra pr-3 text-right">{num(suma("n"))}</td>
-                <td className="cifra pr-3 text-right">{cop(suma("subtotal"))}</td>
-                <td className="cifra pr-3 text-right">{cop(suma("iva"))}</td>
-                <td className="cifra pr-3 text-right">{cop(suma("impoconsumo"))}</td>
-                <td className="cifra text-right">{cop(suma("total"))}</td>
+              <tr>
+                <td>Total {anio}</td>
+                <td className="num">{num(suma("n"))}</td>
+                <td className="num">{cop(suma("subtotal"))}</td>
+                <td className="num">{cop(suma("iva"))}</td>
+                <td className="num">{cop(suma("impoconsumo"))}</td>
+                <td className="num">{cop(suma("total"))}</td>
               </tr>
             </tfoot>
           </table>
         </div>
-        <p className="text-xs text-texto2">
+        <p className="text-xs text-tinta-suave">
           Por fecha de emisión. Incluye las facturas aceptadas por la máquina y las revisadas a mano; las que esperan revisión
           no entran hasta que una persona las revise. La periodicidad real de tu declaración depende de tus ingresos: verifícala con un contador.
         </p>
-      </section>
+      </Tarjeta>
     </div>
   );
 }

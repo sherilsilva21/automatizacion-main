@@ -1,9 +1,10 @@
 import { Suspense } from "react";
+import { CargandoPagina } from "@/componentes/ui";
 import { FormularioFactura } from "@/componentes/FormularioFactura";
 
 export default function PaginaRevision({ params }: PageProps<"/revision/[hash]">) {
   return (
-    <Suspense fallback={<p className="px-6 py-6">Cargando…</p>}>
+    <Suspense fallback={<CargandoPagina />}>
       <Contenido params={params} />
     </Suspense>
   );

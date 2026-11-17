@@ -14,7 +14,8 @@ import { camposAplicables } from "@/lib/ia/campos";
 import type { CampoIa, Sugerencias } from "@/lib/ia/sugerir";
 import { cop } from "./formato";
 import { useRol } from "./Rol";
-import { Girando, IconoMal, IconoOk, botonPrimario, botonSecundario } from "./ui";
+import { estadoDeFactura } from "./estado";
+import { Aviso, Boton, Esqueleto, Girando, IconoAlerta, IconoMal, IconoOk, Sello, botonSecundario } from "./ui";
 
 interface ItemCampo { descripcion: string; cantidad: string; precio: string }
 type Total = "subtotal" | "iva" | "impoconsumo" | "total";
@@ -30,7 +31,7 @@ interface Cargada {
   };
 }
 
-const ENTRADA = "w-full rounded-md border border-borde bg-superficie px-2 py-1.5";
+const ENTRADA = "campo";
 const ZOOMS = [1, 1.6, 2.4, 3.4];
 
 function Campo({ etiqueta, children, ayuda, ia = false }: { etiqueta: string; children: React.ReactNode; ayuda?: string; ia?: boolean }) {
@@ -39,10 +40,10 @@ function Campo({ etiqueta, children, ayuda, ia = false }: { etiqueta: string; ch
       <span className="flex flex-wrap items-center gap-2 font-medium">
         {etiqueta}
         {/* Fase E3: el valor vino de la IA y la persona no lo ha cambiado (texto + color: nunca solo color). */}
-        {ia && <span className="rounded-full border border-manual bg-manual-suave px-2 text-xs font-normal" data-testid="sugerido-ia">sugerido por IA</span>}
+        {ia && <span className="rounded-full border border-manual/40 bg-manual-suave px-2 text-xs font-normal" data-testid="sugerido-ia">sugerido por IA</span>}
       </span>
       {children}
-      {ayuda && <span className="text-xs text-texto2">{ayuda}</span>}
+      {ayuda && <span className="text-xs text-tinta-suave">{ayuda}</span>}
     </label>
   );
 }
@@ -203,7 +204,7 @@ export function FormularioFactura({ hash }: { hash: string }) {
       });
       const d = (await r.json().catch(() => ({}))) as { error?: string; motivos?: string[]; problemas?: string[] };
       if (!r.ok) { setMensaje({ tipo: "error", texto: d.error ?? `Error ${r.status}`, detalles: d.motivos ?? d.problemas }); return; }
-      setMensaje({ tipo: "ok", texto: "Factura guardada. Pasando a la siguiente pendiente…" });
+      setMensaje({ tipo: "ok", texto: "Corrección guardada. Pasando a la siguiente pendiente…" });
       setTimeout(() => void siguiente(), 900);
     } catch (e) {
       setMensaje({ tipo: "error", texto: e instanceof Error ? e.message : "Error de red" });
@@ -212,20 +213,40 @@ export function FormularioFactura({ hash }: { hash: string }) {
     }
   }
 
-  if (errorCarga) return <main className="mx-auto max-w-3xl px-4 py-10"><p role="alert" className="text-malo">{errorCarga}</p><p className="mt-3"><Link className="underline" href="/revision">← Volver a la lista</Link></p></main>;
-  if (!cargada) return <main className="mx-auto max-w-3xl px-4 py-10 text-texto2">Cargando la factura…</main>;
+  if (errorCarga) {
+    return (
+      <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-10">
+        <Aviso tono="error">{errorCarga}</Aviso>
+        <p><Link className="enlace" href="/revision">← Volver a la lista</Link></p>
+      </main>
+    );
+  }
+  if (!cargada) {
+    // Esqueleto con la forma real de la pantalla: imagen a un lado, formulario al otro.
+    return (
+      <main className="mx-auto w-full max-w-[75rem] flex-1 px-4 py-6" aria-busy="true" aria-label="Cargando la factura">
+        <Esqueleto className="mb-5 h-8 w-80 max-w-full" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Esqueleto className="h-[60vh] rounded-panel" />
+          <div className="flex flex-col gap-4"><Esqueleto className="h-48 rounded-panel" /><Esqueleto className="h-40 rounded-panel" /><Esqueleto className="h-40 rounded-panel" /></div>
+        </div>
+      </main>
+    );
+  }
 
   const marcar = (k: Total, v: string) => setTotales((t) => ({ ...t, [k]: v }));
   const cambiarItem = (i: number, campo: keyof ItemCampo, v: string) => setItems((xs) => xs.map((x, k) => (k === i ? { ...x, [campo]: v } : x)));
 
   return (
-    <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5">
-      <p className="mb-3 text-sm"><Link className="underline" href="/revision">← Facturas pendientes</Link></p>
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+    <main className="mx-auto w-full max-w-[75rem] flex-1 px-4 py-6">
+      <p className="mb-3 text-sm"><Link className="enlace" href="/revision">← Facturas pendientes</Link></p>
+      <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-3">
         {/* min-w-0 + overflow-wrap: los nombres de las fotos (foto_20261117_102316_3.jpg) no tienen espacios y, sin esto,
             se salían de la pantalla en el celular. */}
-        <h1 className="min-w-0 text-2xl font-semibold tracking-tight">Revisar factura <span className="text-texto2 [overflow-wrap:anywhere]">{cargada.archivo}</span></h1>
-        {cargada.corregidaManualmente && <span className="rounded-full border border-borde px-3 py-0.5 text-sm">ya corregida por {cargada.corregidaPor}: puedes volver a editarla</span>}
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight">Revisar factura <span className="text-tinta-suave [overflow-wrap:anywhere]">{cargada.archivo}</span></h1>
+        {/* El sello: estado de la factura; al guardar se «estampa» como revisada a mano. */}
+        <Sello estado={mensaje?.tipo === "ok" ? "manual" : estadoDeFactura(cargada)} nuevo={mensaje?.tipo === "ok"} key={mensaje?.tipo === "ok" ? "guardada" : "inicial"} />
+        {cargada.corregidaManualmente && <span className="text-sm text-tinta-suave">Ya corregida por {cargada.corregidaPor}: puedes volver a editarla.</span>}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -237,16 +258,16 @@ export function FormularioFactura({ hash }: { hash: string }) {
             <button className={botonSecundario} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))} disabled={zoom === ZOOMS.length - 1} aria-label="Acercar">+</button>
             <button className={botonSecundario} onClick={() => setGiro((g) => (g + 270) % 360)} aria-label="Girar a la izquierda" title="Girar a la izquierda">↺</button>
             <button className={botonSecundario} onClick={() => setGiro((g) => (g + 90) % 360)} aria-label="Girar a la derecha" title="Girar a la derecha">↻</button>
-            <a className="ml-auto underline" href={`/api/facturas/${hash}/imagen${giro ? `?rotar=${giro}` : ""}`} target="_blank" rel="noreferrer">Abrir en otra pestaña</a>
+            <a className="enlace ml-auto" href={`/api/facturas/${hash}/imagen${giro ? `?rotar=${giro}` : ""}`} target="_blank" rel="noreferrer">Abrir en otra pestaña</a>
           </div>
-          <div className="max-h-[75vh] overflow-auto rounded-lg border border-borde bg-pista/40 p-2">
+          <div className="max-h-[75vh] overflow-auto rounded-panel border border-linea bg-superficie-2 p-2" tabIndex={0} role="region" aria-label="Imagen de la factura (desplázala con las flechas al ampliarla)">
             {/* eslint-disable-next-line @next/next/no-img-element -- la imagen sale de una ruta autenticada, no del optimizador de Next */}
             <img src={`/api/facturas/${hash}/imagen${giro ? `?rotar=${giro}` : ""}`} alt={`Factura ${cargada.archivo}`} style={{ width: `${ZOOMS[zoom] * 100}%`, maxWidth: "none" }} className="block" data-testid="imagen" />
           </div>
           {(cargada.motivosOriginales.length > 0 ? cargada.motivosOriginales : cargada.motivos).length > 0 && (
-            <div className="rounded-lg border border-aviso p-3 text-sm">
-              <b>Por qué quedó en revisión:</b>
-              <ul className="mt-1 list-disc pl-5 text-texto2">
+            <div className="rounded-panel border border-revision/40 bg-revision-suave p-4 text-sm">
+              <b className="inline-flex items-center gap-2"><IconoAlerta className="text-revision" /> Por qué quedó en revisión</b>
+              <ul className="mt-2 list-disc pl-5">
                 {(cargada.motivosOriginales.length > 0 ? cargada.motivosOriginales : cargada.motivos).slice(0, 5).map((m) => <li key={m}>{m}</li>)}
               </ul>
             </div>
@@ -256,7 +277,7 @@ export function FormularioFactura({ hash }: { hash: string }) {
         {/* ── Formulario ── */}
         <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); if (puedeGuardar && !soloLectura) void guardar(); }} noValidate>
           {cargada.iaDisponible && (
-            <section aria-labelledby="h-ia" className="flex flex-col gap-2 rounded-lg border border-manual bg-manual-suave p-4 text-sm" data-testid="asistente-ia">
+            <section aria-labelledby="h-ia" className="flex flex-col gap-2 rounded-panel border border-manual/40 bg-manual-suave p-4 text-sm" data-testid="asistente-ia">
               <h2 id="h-ia" className="font-semibold">Asistente de IA</h2>
               <p>
                 El texto de esta factura (leído por OCR, sin la imagen) <b>se enviará a un servicio externo de IA</b>. Solo rellena
@@ -266,14 +287,14 @@ export function FormularioFactura({ hash }: { hash: string }) {
                 <button type="button" className={botonSecundario} onClick={() => void pedirSugerencia()} disabled={ia.estado === "pidiendo" || guardando} data-testid="sugerir-ia">
                   {ia.estado === "pidiendo" ? <><Girando className="text-acento" /> Pidiendo sugerencias…</> : "Sugerir con IA"}
                 </button>
-                {ia.texto && <span role={ia.estado === "error" ? "alert" : "status"} className={ia.estado === "error" ? "text-malo" : ""} data-testid="ia-estado">{ia.texto}</span>}
+                {ia.texto && <span role={ia.estado === "error" ? "alert" : "status"} className={ia.estado === "error" ? "font-medium text-error" : ""} data-testid="ia-estado">{ia.texto}</span>}
               </div>
             </section>
           )}
           {/* `contents`: este fieldset solo agrupa para poder desactivar TODOS los campos de una vez en la demo. */}
           <fieldset disabled={soloLectura} className="contents">
-          <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
-            <legend className="px-1 text-sm font-semibold">Factura</legend>
+          <fieldset className="grid gap-3 rounded-panel border border-linea bg-superficie p-4 sm:grid-cols-2">
+            <legend className="px-1.5 text-sm font-semibold text-tinta">Factura</legend>
             <Campo etiqueta="Número" ia={esIa("numero")}><input className={entrada("numero")} value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="FE-000123" data-testid="f-numero" /></Campo>
             <Campo etiqueta="Fecha de emisión" ia={esIa("fecha")}><input type="date" className={entrada("fecha")} value={fecha} onChange={(e) => setFecha(e.target.value)} data-testid="f-fecha" /></Campo>
             <div className="sm:col-span-2"><Campo etiqueta="Razón social del proveedor" ia={esIa("proveedor")}><input className={entrada("proveedor")} value={proveedor} onChange={(e) => setProveedor(e.target.value)} data-testid="f-proveedor" /></Campo></div>
@@ -283,8 +304,8 @@ export function FormularioFactura({ hash }: { hash: string }) {
             <Campo etiqueta="Dígito de verificación" ia={esIa("dvProveedor")}><input className={entrada("dvProveedor")} inputMode="numeric" maxLength={1} value={dvNit} onChange={(e) => setDvNit(soloDigitos(e.target.value))} data-testid="f-dv-nit" /></Campo>
           </fieldset>
 
-          <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
-            <legend className="px-1 text-sm font-semibold">Cliente</legend>
+          <fieldset className="grid gap-3 rounded-panel border border-linea bg-superficie p-4 sm:grid-cols-2">
+            <legend className="px-1.5 text-sm font-semibold text-tinta">Cliente</legend>
             <Campo etiqueta="Documento (NIT o CC)" ayuda="Sin puntos ni guion, sin el dígito de verificación" ia={esIa("clienteDocumento")}>
               <input className={entrada("clienteDocumento")} inputMode="numeric" value={docCliente} onChange={(e) => setDocCliente(e.target.value)} data-testid="f-doc-cliente" />
             </Campo>
@@ -292,24 +313,24 @@ export function FormularioFactura({ hash }: { hash: string }) {
             <div className="sm:col-span-2"><Campo etiqueta="Nombre o razón social del cliente" ia={esIa("clienteNombre")}><input className={entrada("clienteNombre")} value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} data-testid="f-nombre-cliente" /></Campo></div>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-2 rounded-lg border border-borde bg-superficie p-4">
-            <legend className="px-1 text-sm font-semibold">Ítems{esIa("items") && <span className="ml-2 rounded-full border border-manual bg-manual-suave px-2 text-xs font-normal" data-testid="sugerido-ia">sugeridos por IA</span>}</legend>
+          <fieldset className="flex flex-col gap-2 rounded-panel border border-linea bg-superficie p-4">
+            <legend className="px-1.5 text-sm font-semibold text-tinta">Ítems{esIa("items") && <span className="ml-2 rounded-full border border-manual/40 bg-manual-suave px-2 text-xs font-normal" data-testid="sugerido-ia">sugeridos por IA</span>}</legend>
             {items.map((it, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-md border border-borde/70 p-3">
+              <div key={i} className="flex flex-col gap-2 rounded-control border border-linea bg-superficie-2/50 p-3">
                 <Campo etiqueta={`Ítem ${i + 1} · descripción`}><input className={ENTRADA} value={it.descripcion} onChange={(e) => cambiarItem(i, "descripcion", e.target.value)} data-testid={`i-desc-${i}`} /></Campo>
                 <div className="grid grid-cols-[5rem_9rem_1fr_auto] items-end gap-2 max-sm:grid-cols-2">
                   <Campo etiqueta="Cantidad"><input className={`${ENTRADA} cifra`} inputMode="numeric" value={it.cantidad} onChange={(e) => cambiarItem(i, "cantidad", e.target.value)} data-testid={`i-cant-${i}`} /></Campo>
                   <Campo etiqueta="Precio unitario"><input className={`${ENTRADA} cifra`} inputMode="numeric" value={it.precio} onChange={(e) => cambiarItem(i, "precio", e.target.value)} data-testid={`i-precio-${i}`} /></Campo>
-                  <p className="cifra pb-1.5 text-right text-sm text-texto2">Subtotal: <b className="text-foreground">{cop(itemsNum[i]?.subtotal ?? 0)}</b></p>
-                  <button type="button" className="pb-1.5 text-sm underline" onClick={() => setItems((xs) => xs.filter((_, k) => k !== i))} disabled={items.length === 1} aria-label={`Quitar el ítem ${i + 1}`}>quitar</button>
+                  <p className="cifra pb-1.5 text-right text-sm text-tinta-suave">Subtotal: <b className="text-tinta">{cop(itemsNum[i]?.subtotal ?? 0)}</b></p>
+                  <button type="button" className="enlace min-h-10 text-sm disabled:opacity-45" onClick={() => setItems((xs) => xs.filter((_, k) => k !== i))} disabled={items.length === 1} aria-label={`Quitar el ítem ${i + 1}`}>quitar</button>
                 </div>
               </div>
             ))}
             <button type="button" className={`${botonSecundario} self-start`} onClick={() => setItems((xs) => [...xs, { descripcion: "", cantidad: "1", precio: "" }])} data-testid="agregar-item">+ Agregar ítem</button>
           </fieldset>
 
-          <fieldset className="grid gap-3 rounded-lg border border-borde bg-superficie p-4 sm:grid-cols-2">
-            <legend className="px-1 text-sm font-semibold">Totales</legend>
+          <fieldset className="grid gap-3 rounded-panel border border-linea bg-superficie p-4 sm:grid-cols-2">
+            <legend className="px-1.5 text-sm font-semibold text-tinta">Totales</legend>
             <Campo etiqueta="Valor antes de IVA" ia={esIa("subtotal")}><input className={entrada("subtotal", "cifra")} inputMode="numeric" value={mostrar("subtotal")} onChange={(e) => marcar("subtotal", e.target.value)} data-testid="f-subtotal" /></Campo>
             <Campo etiqueta="IVA (19 %)" ia={esIa("iva")}><input className={entrada("iva", "cifra")} inputMode="numeric" value={mostrar("iva")} onChange={(e) => marcar("iva", e.target.value)} data-testid="f-iva" /></Campo>
             <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={aplicaInc} onChange={(e) => setAplicaInc(e.target.checked)} data-testid="f-aplica-inc" /> La factura trae impoconsumo (4 %: telefonía móvil y datos)</label>
@@ -320,37 +341,37 @@ export function FormularioFactura({ hash }: { hash: string }) {
           </fieldset>
 
           {/* ── Validación en vivo ── */}
-          <section aria-live="polite" className="flex flex-col gap-2 rounded-lg border border-borde bg-superficie p-4" data-testid="validacion">
+          <section aria-live="polite" className="flex flex-col gap-2 rounded-panel border border-linea bg-superficie p-4" data-testid="validacion">
             <h2 className="text-sm font-semibold">Validación</h2>
             {problemasFormato.length > 0 ? (
-              <ul className="flex flex-col gap-1 text-sm">{problemasFormato.map((p) => <li key={p} className="flex items-start gap-2"><IconoMal className="mt-0.5 text-malo" /> {p}</li>)}</ul>
+              <ul className="flex flex-col gap-1 text-sm">{problemasFormato.map((p) => <li key={p} className="flex items-start gap-2"><IconoMal className="mt-0.5 text-error" /> {p}</li>)}</ul>
             ) : motivos.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm"><IconoOk className="text-bueno" /> Todas las validaciones pasan (IVA, sumas, dígitos de verificación).</p>
+              <p className="flex items-center gap-2 rounded-control bg-aceptada-suave px-3 py-2 text-sm"><IconoOk className="text-aceptada" /> Todas las validaciones pasan (IVA, sumas, dígitos de verificación).</p>
             ) : (
               <>
-                <ul className="flex flex-col gap-1 text-sm">{motivos.map((m) => <li key={m} className="flex items-start gap-2"><IconoMal className="mt-0.5 text-malo" /> {m}</li>)}</ul>
-                {!soloLectura && <label className="mt-1 flex items-start gap-2 rounded-md border border-aviso p-2 text-sm">
+                <ul className="flex flex-col gap-1 text-sm">{motivos.map((m) => <li key={m} className="flex items-start gap-2"><IconoAlerta className="mt-0.5 text-revision" /> {m}</li>)}</ul>
+                {!soloLectura && <label className="mt-1 flex cursor-pointer items-start gap-2 rounded-control border border-revision/40 bg-revision-suave p-3 text-sm">
                   <input type="checkbox" className="mt-1" checked={confirmo} onChange={(e) => setConfirmo(e.target.checked)} data-testid="confirmo" />
-                  <span>Revisé la imagen y estos datos son los de la factura, aunque alguna validación no cuadre. <span className="text-texto2">(Queda registrado quién lo confirmó.)</span></span>
+                  <span>Revisé la imagen y estos datos son los de la factura, aunque alguna validación no cuadre. <span className="text-tinta-suave">(Queda registrado quién lo confirmó.)</span></span>
                 </label>}
               </>
             )}
           </section>
 
           {mensaje && (
-            <div role={mensaje.tipo === "error" ? "alert" : "status"} className={`rounded-lg border p-3 text-sm ${mensaje.tipo === "error" ? "border-malo text-malo" : "border-bueno"}`} data-testid="mensaje">
+            <Aviso tono={mensaje.tipo === "error" ? "error" : "exito"} data-testid="mensaje">
               {mensaje.texto}
               {mensaje.detalles && <ul className="mt-1 list-disc pl-5">{mensaje.detalles.map((x) => <li key={x}>{x}</li>)}</ul>}
-            </div>
+            </Aviso>
           )}
 
           <div className="flex flex-wrap items-center gap-3 pb-8">
             {soloLectura ? (
-              <p className="text-sm text-texto2" data-testid="demo-sin-guardar">Modo demo: puedes ver la factura y su validación, pero no guardar cambios.</p>
+              <p className="inline-flex items-center gap-2 text-sm text-tinta-suave" data-testid="demo-sin-guardar">Modo demo: puedes ver la factura y su validación, pero no guardar cambios.</p>
             ) : (
-              <button type="submit" className={botonPrimario} disabled={!puedeGuardar} data-testid="guardar">
-                {guardando ? "Guardando…" : motivos.length > 0 ? "Guardar de todos modos" : "Guardar factura"}
-              </button>
+              <Boton type="submit" variante="principal" disabled={!puedeGuardar} cargando={guardando} textoCargando="Guardando…" data-testid="guardar">
+                {motivos.length > 0 ? "Guardar de todos modos" : "Guardar corrección"}
+              </Boton>
             )}
             <button type="button" className={botonSecundario} onClick={() => void siguiente()} disabled={guardando}>Saltar a la siguiente</button>
           </div>

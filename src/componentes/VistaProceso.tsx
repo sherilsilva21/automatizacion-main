@@ -10,7 +10,8 @@ import type { Metricas } from "@/lib/modelo/tipos";
 import { calcularTasas, sumarMetricas } from "@/lib/procesamiento/metricas";
 import { cop, dormir, fechaHora, num, pct } from "./formato";
 import { SoloEscritura } from "./Rol";
-import { Cifra, Girando, IconoMal, IconoOk, Progreso, botonPrimario, botonSecundario } from "./ui";
+import { estadoDeFactura } from "./estado";
+import { Aviso, Boton, Cifra, EsqueletoCifras, EsqueletoTabla, Girando, IconoDescarga, IconoEstado, IconoOk, Insignia, Progreso, Tarjeta, Vacio, claseBoton } from "./ui";
 
 const SONDEO_MS = 4000;
 
@@ -85,22 +86,31 @@ export function VistaProceso({ id }: { id: string }) {
   const segundos = estado ? Math.max(0, Math.round(((estado.fin ?? ahora) - estado.inicio) / 1000)) : 0;
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-4 py-6">
-      <p><Link className="text-sm underline" href="/">← Procesar facturas</Link></p>
-      <h1 className="text-2xl font-semibold tracking-tight">Lote: {estado?.carpeta ?? "…"}</h1>
-      {mensaje && <p role="alert" className="text-malo">{mensaje}</p>}
+    <main className="mx-auto flex w-full max-w-[75rem] flex-1 flex-col gap-6 px-4 py-8">
+      <div className="flex flex-col gap-2">
+        <p><Link className="enlace text-sm" href="/">← Procesar facturas</Link></p>
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">Lote: {estado?.carpeta ?? "…"}</h1>
+      </div>
+      {mensaje && <Aviso tono="error">{mensaje}</Aviso>}
+
+      {!estado && !mensaje && (
+        <div className="flex flex-col gap-4" role="status" aria-busy="true" aria-label="Cargando el lote">
+          <EsqueletoCifras />
+          <EsqueletoTabla etiqueta="Cargando las facturas" />
+        </div>
+      )}
 
       {estado && (
-        <section className="flex flex-col gap-4 rounded-lg border border-borde bg-superficie p-5">
+        <Tarjeta className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="inline-flex items-center gap-2 font-medium">
-              {terminado ? <><IconoOk className="text-bueno" /> Terminado</> : <><Girando className="text-acento" /> Procesando (en segundo plano)</>}
+            <span className="inline-flex items-center gap-2 font-medium" aria-live="polite">
+              {terminado ? <><IconoOk className="text-aceptada" /> Terminado</> : <><Girando className="text-acento" /> Procesando (en segundo plano)</>}
             </span>
-            <span className="cifra text-texto2">{fechaHora(estado.inicio)} · {segundos} s</span>
+            <span className="cifra text-tinta-suave">{fechaHora(estado.inicio)} · {segundos} s</span>
           </div>
           <div>
             <Progreso valor={hechas} max={total} etiqueta="Facturas procesadas" />
-            <p className="cifra mt-1 text-sm text-texto2">{num(hechas)} de {num(total)} facturas procesadas</p>
+            <p className="cifra mt-1 text-sm text-tinta-suave">{num(hechas)} de {num(total)} facturas procesadas</p>
           </div>
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
             <Cifra etiqueta="Antes de IVA" valor={cop(m.aceptadas.subtotal + m.manuales.subtotal)} />
@@ -108,74 +118,80 @@ export function VistaProceso({ id }: { id: string }) {
             <Cifra etiqueta="Impoconsumo" valor={cop(m.aceptadas.impoconsumo + m.manuales.impoconsumo)} />
             <Cifra etiqueta="Total" valor={cop(m.aceptadas.total + m.manuales.total)} />
           </div>
-          <p className="-mt-2 text-xs text-texto2">Suma lo aceptado (por la máquina o revisado a mano). Lo que está en revisión no se incluye hasta que una persona lo revise.</p>
-          <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-            <li className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> Leídas correctamente: <b className="cifra">{num(t.correctas)}</b> ({pct(t.pctCorrectas)})</li>
-            <li className="inline-flex items-center gap-1"><IconoMal className="text-malo" /> A revisión / mal leídas: <b className="cifra">{num(t.malLeidas)}</b> ({pct(t.pctMalLeidas)})</li>
-            <li>Revisadas a mano: <b className="cifra">{num(t.revisadasAMano)}</b>{t.pendientes > 0 && <> · <Link className="underline" href="/revision">{num(t.pendientes)} pendientes: revisar</Link></>}</li>
-            <li>Duplicadas: <b className="cifra">{num(m.duplicadas)}</b></li>
-            <li>Clientes nuevos: <b className="cifra">{num(m.clientesNuevos)}</b></li>
+          <p className="-mt-2 text-xs text-tinta-suave">Suma lo aceptado (por la máquina o revisado a mano). Lo que está en revisión no se incluye hasta que una persona lo revise.</p>
+          <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <li className="inline-flex items-center gap-1.5"><IconoEstado estado="aceptada" /> Leídas correctamente: <b className="cifra">{num(t.correctas)}</b> ({pct(t.pctCorrectas)})</li>
+            <li className="inline-flex items-center gap-1.5"><IconoEstado estado="revision" /> A revisión / mal leídas: <b className="cifra">{num(t.malLeidas)}</b> ({pct(t.pctMalLeidas)})</li>
+            <li className="inline-flex flex-wrap items-center gap-1.5"><IconoEstado estado="manual" /> Revisadas a mano: <b className="cifra">{num(t.revisadasAMano)}</b>{t.pendientes > 0 && <> · <Link className="enlace" href="/revision">{num(t.pendientes)} pendientes: revisar</Link></>}</li>
+            <li className="inline-flex items-center gap-1.5"><IconoEstado estado="duplicada" /> Duplicadas: <b className="cifra">{num(m.duplicadas)}</b></li>
+            <li className="inline-flex items-center gap-1.5">Clientes nuevos: <b className="cifra">{num(m.clientesNuevos)}</b></li>
           </ul>
           {estado.tieneExcel && (
             <p className="flex flex-wrap items-center gap-3">
-              <a className={botonPrimario} href={`/api/procesos/${id}/excel`}>Descargar Excel</a>
+              <a className={claseBoton("principal")} href={`/api/procesos/${id}/excel`}><IconoDescarga /> Descargar Excel</a>
               {terminado && m.manuales.n > 0 && (
                 <SoloEscritura>{/* Fase E4: regenerar escribe en Blob; la demo solo descarga */}
-                  <button className={botonSecundario} onClick={() => void regenerarExcel()} disabled={regenerando} data-testid="regenerar-excel">
-                    {regenerando ? "Generando…" : "Regenerar el Excel con las correcciones a mano"}
-                  </button>
+                  <Boton onClick={() => void regenerarExcel()} cargando={regenerando} textoCargando="Generando…" data-testid="regenerar-excel">
+                    Regenerar el Excel con las correcciones a mano
+                  </Boton>
                 </SoloEscritura>
               )}
             </p>
           )}
-        </section>
+        </Tarjeta>
       )}
 
+      {terminado && !facturas && <Tarjeta><EsqueletoTabla etiqueta="Cargando las facturas" /></Tarjeta>}
+
       {facturas && (
-        <section className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
+        <Tarjeta className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold">Facturas ({num(visibles.length)})</h2>
-            {hayMas && <span className="text-sm text-texto2" data-testid="demo-tope">Modo demo: se muestran las primeras 50 facturas del lote.</span>}
-            <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} className="rounded-md border border-borde bg-superficie px-2 py-1 text-sm" aria-label="Filtrar por estado">
-              <option value="todas">Todas</option>
-              <option value="aceptada">Aceptadas</option>
-              <option value="revision">En revisión</option>
-            </select>
+            <label className="ml-auto flex items-center gap-2 text-sm">
+              <span className="text-tinta-suave">Mostrar</span>
+              <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} className="campo w-auto">
+                <option value="todas">Todas</option>
+                <option value="aceptada">Aceptadas</option>
+                <option value="revision">En revisión</option>
+              </select>
+            </label>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-borde text-texto2">
-                  <th className="py-2 pr-3 font-medium">Archivo</th><th className="pr-3 font-medium">Número</th><th className="pr-3 font-medium">Fecha</th>
-                  <th className="pr-3 font-medium">Razón social</th><th className="pr-3 text-right font-medium">Antes de IVA</th>
-                  <th className="pr-3 text-right font-medium">IVA</th><th className="pr-3 text-right font-medium">Impoconsumo</th>
-                  <th className="pr-3 text-right font-medium">Total</th><th className="font-medium">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibles.map((f) => (
-                  <tr key={f.hash} className="border-b border-borde/60 align-top">
-                    <td className="py-2 pr-3"><a className="underline" target="_blank" rel="noreferrer" href={`/api/facturas/${f.hash}/imagen`}>{f.archivo}</a></td>
-                    <td className="cifra whitespace-nowrap pr-3">{f.numero ?? "—"}</td>
-                    <td className="cifra whitespace-nowrap pr-3">{f.fecha ?? "—"}</td>
-                    <td className="pr-3">{f.proveedor ?? "—"}</td>
-                    <td className="cifra pr-3 text-right">{cop(f.subtotal)}</td>
-                    <td className="cifra pr-3 text-right">{cop(f.iva)}</td>
-                    <td className="cifra pr-3 text-right">{cop(f.impoconsumo)}</td>
-                    <td className="cifra pr-3 text-right">{cop(f.total)}</td>
-                    <td>
-                      {f.estado === "aceptada"
-                        ? <span className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> {f.corregidaManualmente ? "Revisada a mano" : "Aceptada"}</span>
-                        : <span className="inline-flex items-center gap-1" title={f.motivos.join("\n")}><IconoMal className="text-malo" /> Revisión</span>}
-                      {f.estado === "revision" && <div className="max-w-xs text-xs text-texto2">{f.motivos[0]}</div>}
-                      {(f.estado === "revision" || f.corregidaManualmente) && <div><Link className="text-sm underline" href={`/revision/${f.hash}`}>{f.estado === "revision" ? "Revisar" : "Editar"}</Link></div>}
-                    </td>
+          {hayMas && <Aviso tono="info" data-testid="demo-tope">Modo demo: se muestran las primeras 50 facturas del lote.</Aviso>}
+          {visibles.length === 0 ? (
+            <Vacio titulo="No hay facturas con este estado.">Cambia el filtro «Mostrar» para ver las demás.</Vacio>
+          ) : (
+            <div className="relative overflow-x-auto rounded-control border border-linea" tabIndex={0} role="region" aria-label="Facturas del lote">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Archivo</th><th>Número</th><th>Fecha</th><th>Razón social</th>
+                    <th className="num">Antes de IVA</th><th className="num">IVA</th><th className="num">Impoconsumo</th><th className="num">Total</th>
+                    <th>Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody>
+                  {visibles.map((f) => (
+                    <tr key={f.hash}>
+                      <td className="max-w-56 [overflow-wrap:anywhere]"><a className="enlace" target="_blank" rel="noreferrer" href={`/api/facturas/${f.hash}/imagen`}>{f.archivo}</a></td>
+                      <td className="whitespace-nowrap font-mono text-xs">{f.numero ?? "—"}</td>
+                      <td className="cifra whitespace-nowrap">{f.fecha ?? "—"}</td>
+                      <td className="min-w-40">{f.proveedor ?? "—"}</td>
+                      <td className="num">{cop(f.subtotal)}</td>
+                      <td className="num">{cop(f.iva)}</td>
+                      <td className="num">{cop(f.impoconsumo)}</td>
+                      <td className="num font-medium">{cop(f.total)}</td>
+                      <td className="min-w-44">
+                        <span title={f.motivos.join("\n") || undefined}><Insignia estado={estadoDeFactura(f)} corta /></span>
+                        {f.estado === "revision" && <div className="mt-1 max-w-xs text-xs text-tinta-suave">{f.motivos[0]}</div>}
+                        {(f.estado === "revision" || f.corregidaManualmente) && <div className="mt-1"><Link className="enlace text-sm" href={`/revision/${f.hash}`}>{f.estado === "revision" ? "Revisar" : "Editar"}</Link></div>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Tarjeta>
       )}
     </main>
   );

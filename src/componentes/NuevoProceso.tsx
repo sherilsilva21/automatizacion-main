@@ -11,12 +11,16 @@ import { comprimirFoto } from "@/lib/navegador/comprimir-imagen";
 import { EXTENSIONES_IMAGEN } from "@/lib/rutas";
 import { dormir, num } from "./formato";
 import { ResumenEnVivo, procesadasDe } from "./ResumenEnVivo";
-import { IconoMal, IconoOk, Girando, Progreso, botonPrimario, botonSecundario } from "./ui";
+import { Aviso, Boton, Girando, IconoAlerta, IconoOk, Progreso, claseBoton } from "./ui";
 import { useMetricas } from "./useMetricas";
 
 const CONCURRENCIA_SUBIDA = 6;
 const REINTENTOS = 3;
 const TAMANO_LOTE_POR_DEFECTO = 100;
+
+// Los <input type="file"> están ocultos (sr-only) dentro de un <label> con forma de botón: el anillo de foco se
+// dibuja en el label cuando el input tiene el foco del teclado.
+const FOCO_LABEL = "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-acento";
 
 const mb = (bytes: number) => (bytes / 1024 / 1024).toLocaleString("es-CO", { maximumFractionDigits: 1 });
 /** Peso legible: las fotos comprimidas pesan cientos de KB y «0,5 MB» diría poco. */
@@ -234,16 +238,17 @@ export function NuevoProceso() {
   const ordenado = useMemo(() => lotes, [lotes]);
 
   return (
-    <section className="flex flex-col gap-5 rounded-lg border border-borde bg-superficie p-5">
-      <div>
-        <h2 className="text-lg font-semibold">1. Elige las facturas</h2>
-        <p className="text-sm text-texto2">
-          Imágenes .png o .jpg. Puedes elegir una carpeta completa (incluso 1000 facturas): se divide en lotes y cada lote tiene sus métricas.
-        </p>
-      </div>
-
+    <section className="flex flex-col gap-5 rounded-panel border border-linea bg-superficie p-5" aria-labelledby="h-elegir">
+      {/* Zona de elección: superficie-2 con borde punteado (la guía la reserva para «zonas de soltar»). */}
+      <div className="flex flex-col items-start gap-4 rounded-panel border border-dashed border-linea bg-superficie-2 p-5 sm:p-6">
+        <div>
+          <h2 id="h-elegir" className="text-lg font-semibold">1. Elige las facturas</h2>
+          <p className="mt-1 text-sm text-tinta-suave">
+            Imágenes .png o .jpg. Puedes elegir una carpeta completa (incluso 1000 facturas): se divide en lotes y cada lote tiene sus métricas.
+          </p>
+        </div>
       <div className="flex flex-wrap gap-3">
-        <label className={`${botonPrimario} cursor-pointer ${subiendo ? "pointer-events-none opacity-40" : ""}`}>
+        <label className={claseBoton("principal", `cursor-pointer ${FOCO_LABEL} ${subiendo ? "pointer-events-none opacity-45" : ""}`)}>
           Elegir carpeta…
           <input
             type="file" multiple className="sr-only" disabled={subiendo}
@@ -253,7 +258,7 @@ export function NuevoProceso() {
             data-testid="carpeta"
           />
         </label>
-        <label className={`${botonSecundario} cursor-pointer ${subiendo ? "pointer-events-none opacity-40" : ""}`}>
+        <label className={claseBoton("secundario", `cursor-pointer ${FOCO_LABEL} ${subiendo ? "pointer-events-none opacity-45" : ""}`)}>
           Elegir archivos…
           <input
             type="file" multiple accept="image/png,image/jpeg" className="sr-only" disabled={subiendo}
@@ -262,7 +267,7 @@ export function NuevoProceso() {
           />
         </label>
         {esTactil && (
-          <label className={`${botonSecundario} cursor-pointer ${subiendo ? "pointer-events-none opacity-40" : ""}`}>
+          <label className={claseBoton("secundario", `cursor-pointer ${FOCO_LABEL} ${subiendo ? "pointer-events-none opacity-45" : ""}`)}>
             Tomar fotos…
             <input
               type="file" accept="image/*" capture="environment" multiple className="sr-only" disabled={subiendo}
@@ -272,105 +277,106 @@ export function NuevoProceso() {
           </label>
         )}
       </div>
+      </div>
 
       {(fotos.length > 0 || comprimiendo > 0) && (
-        <div className="flex flex-col gap-3 rounded-md bg-pista/50 p-4" data-testid="bandeja-fotos">
+        <div className="flex flex-col gap-3 rounded-panel border border-linea p-4" data-testid="bandeja-fotos">
           <p className="cifra" aria-live="polite">
             <b>{num(fotos.length)}</b> {fotos.length === 1 ? "foto" : "fotos"}
             {fotos.length > 0 && (
-              <span className="text-texto2">
+              <span className="text-tinta-suave">
                 {" "}· {peso(fotos.reduce((a, f) => a + f.original, 0))} originales → {peso(fotos.reduce((a, f) => a + f.archivo.size, 0))} para subir
               </span>
             )}
-            {comprimiendo > 0 && <span className="ml-2 inline-flex items-center gap-1 text-texto2"><Girando className="text-acento" /> Preparando {num(comprimiendo)}…</span>}
+            {comprimiendo > 0 && <span className="ml-2 inline-flex items-center gap-1 text-tinta-suave"><Girando className="text-acento" /> Preparando {num(comprimiendo)}…</span>}
           </p>
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {fotos.map((f, i) => (
-              <li key={f.id} className="flex flex-col gap-2 rounded-md border border-borde bg-superficie p-2 text-xs">
+              <li key={f.id} className="flex flex-col gap-2 rounded-control border border-linea bg-superficie p-2 text-xs">
                 {/* eslint-disable-next-line @next/next/no-img-element -- miniatura local (URL de objeto), no pasa por el optimizador de Next */}
                 <img src={f.url} alt={`Foto ${i + 1}`} className="aspect-[3/4] w-full rounded object-cover" />
                 <span className="cifra">{i + 1}. {peso(f.original)} → {peso(f.archivo.size)}</span>
-                <button className={botonSecundario} onClick={() => quitarFoto(f.id)} aria-label={`Quitar la foto ${i + 1}`}>Quitar</button>
+                <Boton onClick={() => quitarFoto(f.id)} aria-label={`Quitar la foto ${i + 1}`}>Quitar</Boton>
               </li>
             ))}
           </ul>
-          <button
-            onClick={procesarFotos} disabled={subiendo || comprimiendo > 0 || fotos.length === 0}
-            className={`${botonPrimario} self-start`} data-testid="procesar-fotos"
+          <Boton
+            variante="principal" onClick={procesarFotos} disabled={subiendo || comprimiendo > 0 || fotos.length === 0}
+            className="self-start" data-testid="procesar-fotos"
           >
             Procesar {fotos.length === 1 ? "esta foto" : `estas ${num(fotos.length)} fotos`}
-          </button>
-          <p className="text-xs text-texto2">
+          </Boton>
+          <p className="text-xs text-tinta-suave">
             Una foto con sombras, arrugas o en ángulo se lee peor que una imagen escaneada: es normal que más facturas pasen a revisión.
           </p>
         </div>
       )}
 
-      {errorFoto && <p role="alert" className="text-sm text-malo">{errorFoto}</p>}
+      {errorFoto && <Aviso tono="error">{errorFoto}</Aviso>}
 
       {archivos.length > 0 ? (
-        <div className="flex flex-col gap-3 rounded-md bg-pista/50 p-4">
+        <div className="flex flex-col gap-3 rounded-panel border border-linea p-4">
           <p className="cifra">
             <b>{num(archivos.length)}</b> imágenes en «{carpeta}» · {mb(bytes)} MB
-            {ignorados > 0 ? <span className="text-texto2"> · {num(ignorados)} archivos que no son imagen se ignoran</span> : null}
+            {ignorados > 0 ? <span className="text-tinta-suave"> · {num(ignorados)} archivos que no son imagen se ignoran</span> : null}
           </p>
           <label className="flex flex-wrap items-center gap-2 text-sm">
             Facturas por lote
             <input
               type="number" min={0} value={tamLote} onChange={(e) => setTamLote(e.target.value)} disabled={subiendo}
-              className="cifra w-24 rounded-md border border-borde bg-superficie px-2 py-1"
+              className="campo cifra w-24"
             />
-            <span className="text-texto2">
+            <span className="text-tinta-suave">
               → {num(nLotes)} {nLotes === 1 ? "lote" : "lotes"} (0 = todo en un solo lote)
             </span>
           </label>
-          <p className="text-xs text-texto2">
+          <p className="text-xs text-tinta-suave">
             Cada factura usa unas 5 lecturas y 6 escrituras de Firestore (plan gratuito: 50 000 lecturas al día): {num(archivos.length)} facturas ≈ {num(archivos.length * 5)} lecturas.
             Procesar toma unos 1,5 s por factura; la pestaña debe seguir abierta.
           </p>
-          <button
-            onClick={() => empezar(archivos, carpeta)} disabled={subiendo || archivos.length === 0}
-            className={`${botonPrimario} self-start`} data-testid="procesar"
+          <Boton
+            variante="principal" onClick={() => empezar(archivos, carpeta)} disabled={archivos.length === 0}
+            cargando={subiendo} textoCargando="Subiendo…" className="self-start" data-testid="procesar"
           >
-            {subiendo ? <><Girando /> Subiendo…</> : `Subir y procesar ${num(archivos.length)} facturas`}
-          </button>
+            Subir y procesar {num(archivos.length)} facturas
+          </Boton>
         </div>
       ) : fotos.length === 0 && comprimiendo === 0 ? (
-        <p className="text-sm text-texto2">Aún no has elegido nada.</p>
+        <p className="text-sm text-tinta-suave">Aún no has elegido nada: usa «Elegir carpeta…» para empezar.</p>
       ) : null}
 
-      {error && <p role="alert" className="text-sm text-malo">{error}</p>}
+      {error && <Aviso tono="error">{error}</Aviso>}
 
       {ordenado.length > 0 && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" aria-live="polite">
           <h2 className="text-lg font-semibold">2. Avance de los lotes</h2>
           <ul className="flex flex-col gap-3">
             {ordenado.map((l, i) => {
               const vivo = lotesVivos.find((v) => v.id === l.id);
               const hechas = vivo ? procesadasDe(vivo) : 0;
               return (
-                <li key={i} className="flex flex-col gap-2 rounded-md border border-borde p-3">
+                <li key={i} className="flex flex-col gap-2 rounded-panel border border-linea p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span className="font-medium">{l.etiqueta} · {num(l.total)} imágenes</span>
-                    <span className="inline-flex items-center gap-1 text-texto2">
-                      {l.fase === "error" ? <><IconoMal className="text-malo" /> {l.error}</> :
+                    <span className="inline-flex items-center gap-1 text-tinta-suave">
+                      {l.fase === "error" ? <><IconoAlerta className="text-error" /> {l.error}</> :
                         l.fase === "pendiente" ? "En espera" :
                         l.fase === "subiendo" ? <><Girando className="text-acento" /> Subiendo</> :
-                        vivo?.estado === "terminado" ? <><IconoOk className="text-bueno" /> Terminado</> :
+                        vivo?.estado === "terminado" ? <><IconoOk className="text-aceptada" /> Terminado</> :
                         <><Girando className="text-acento" /> Procesando</>}
                     </span>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div>
                       <Progreso valor={l.subidos + l.fallidos} max={l.total} etiqueta={`Subida de ${l.etiqueta}`} />
-                      <p className="cifra mt-1 text-xs text-texto2">Subida {num(l.subidos)} de {num(l.total)}{l.fallidos ? ` · ${l.fallidos} fallaron` : ""}</p>
+                      <p className="cifra mt-1 text-xs text-tinta-suave">Subida {num(l.subidos)} de {num(l.total)}{l.fallidos ? ` · ${l.fallidos} fallaron` : ""}</p>
                     </div>
                     <div>
                       <Progreso valor={hechas} max={vivo?.totalArchivos ?? l.total} etiqueta={`Procesamiento de ${l.etiqueta}`} />
-                      <p className="cifra mt-1 text-xs text-texto2">Procesadas {num(hechas)} de {num(vivo?.totalArchivos ?? l.total)}</p>
+                      <p className="cifra mt-1 text-xs text-tinta-suave">Procesadas {num(hechas)} de {num(vivo?.totalArchivos ?? l.total)}</p>
                     </div>
                   </div>
-                  {l.id && <Link className="text-xs underline" href={`/procesos/${l.id}`}>Ver detalle y facturas</Link>}
+                  {l.id && <Link className="enlace self-start text-xs" href={`/procesos/${l.id}`}>Ver detalle y facturas</Link>}
                 </li>
               );
             })}
@@ -379,19 +385,21 @@ export function NuevoProceso() {
           {lotesVivos.length > 0 && <ResumenEnVivo lotes={lotesVivos} titulo={procesando ? "Procesado hasta ahora (en vivo)" : "Total procesado en esta carga"} />}
 
           {terminoSubida && hayFallidos > 0 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-md border border-aviso p-3 text-sm">
-              <span>
-                {num(hayFallidos)} archivos no se pudieron subir.
-                {motivos.length > 0 && <span className="mt-1 block text-xs text-texto2">Por ejemplo: {motivos.join(" · ")}</span>}
-              </span>
-              <button className={botonSecundario} onClick={() => empezar([...fallidosRef.current], `${carpeta} (reintento)`)}>Reintentar esos archivos</button>
-            </div>
+            <Aviso tono="revision">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  {num(hayFallidos)} archivos no se pudieron subir.
+                  {motivos.length > 0 && <span className="mt-1 block text-xs text-tinta-suave">Por ejemplo: {motivos.join(" · ")}</span>}
+                </span>
+                <Boton onClick={() => empezar([...fallidosRef.current], `${carpeta} (reintento)`)}>Reintentar esos archivos</Boton>
+              </div>
+            </Aviso>
           )}
           {terminoSubida && (
-            <p className="text-sm">
+            <Aviso tono={procesando ? "info" : "exito"}>
               Subida completa. {procesando ? "El procesamiento sigue en segundo plano: puedes cambiar de pestaña." : ""}{" "}
-              <Link className="font-medium underline" href="/metricas">Ver métricas →</Link>
-            </p>
+              <Link className="enlace" href="/metricas">Ver métricas →</Link>
+            </Aviso>
           )}
         </div>
       )}
