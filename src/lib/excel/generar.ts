@@ -3,8 +3,9 @@
 
 import ExcelJS from "exceljs";
 import { firestore } from "@/lib/firebase/admin";
-import { COLECCIONES, type ArchivoCola, type Cliente, type Factura, type Proceso } from "@/lib/modelo/tipos";
+import { COLECCIONES, type ArchivoCola, type Cliente, type Factura, type Importes, type Proceso } from "@/lib/modelo/tipos";
 import { colaArchivos } from "@/lib/procesamiento/cola";
+import { nombrePeriodo, periodoDe } from "@/lib/reportes/periodos";
 
 const MONEDA = '"$"#,##0';
 
@@ -20,6 +21,38 @@ function hoja(wb: ExcelJS.Workbook, nombre: string, columnas: { header: string; 
 }
 
 const aFecha = (iso: string | null): Date | null => (iso ? new Date(`${iso}T00:00:00Z`) : null);
+
+/**
+ * Fase E2 · hoja «IVA por periodo»: una fila por periodo (base gravable, IVA, impoconsumo y total) y una fila de
+ * total. `aviso` se escribe debajo, p. ej. cuando hay lotes antiguos que no tienen datos por periodo.
+ */
+export function agregarHojaIva(wb: ExcelJS.Workbook, periodos: [string, Importes][], aviso?: string): void {
+  const ws = hoja(wb, "IVA por periodo", [
+    { header: "Periodo", key: "nombre", width: 28 }, { header: "Clave", key: "clave", width: 10 },
+    { header: "Facturas", key: "n", width: 10 }, { header: "Base gravable (antes de IVA)", key: "subtotal", width: 28, moneda: true },
+    { header: "IVA", key: "iva", width: 16, moneda: true }, { header: "Impoconsumo", key: "inc", width: 16, moneda: true },
+    { header: "Total", key: "total", width: 18, moneda: true },
+  ]);
+  for (const [clave, p] of periodos) {
+    ws.addRow({ nombre: nombrePeriodo(clave), clave, n: p.n, subtotal: p.subtotal, iva: p.iva, inc: p.impoconsumo, total: p.total });
+  }
+  const suma = (c: keyof Importes) => periodos.reduce((a, [, p]) => a + p[c], 0);
+  const fila = ws.addRow({ nombre: "Total", n: suma("n"), subtotal: suma("subtotal"), iva: suma("iva"), inc: suma("impoconsumo"), total: suma("total") });
+  fila.font = { bold: true };
+  if (aviso) ws.addRow({ nombre: aviso });
+}
+
+/** Periodos de un conjunto de facturas: solo las ACEPTADAS (por la máquina o revisadas a mano), por fecha de emisión. */
+export function periodosDeFacturas(facturas: Factura[]): [string, Importes][] {
+  const mapa = new Map<string, Importes>();
+  for (const f of facturas) {
+    const clave = f.estado === "aceptada" ? periodoDe(f.fecha) : null;
+    if (!clave) continue;
+    const p = mapa.get(clave) ?? { n: 0, subtotal: 0, iva: 0, impoconsumo: 0, total: 0 };
+    mapa.set(clave, { n: p.n + 1, subtotal: p.subtotal + (f.subtotal ?? 0), iva: p.iva + (f.iva ?? 0), impoconsumo: p.impoconsumo + (f.impoconsumo ?? 0), total: p.total + (f.total ?? 0) });
+  }
+  return [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
 
 /** Nombre `resultado_AAAA-MM-DD_HHmm.xlsx` con la hora de Colombia. */
 export function nombreExcel(ahora = new Date()): string {
@@ -90,6 +123,9 @@ export async function generarExcel(procesoId: string, proceso: Proceso, fin: Dat
     { k: "Clientes existentes", v: archivos.filter((a) => a.clienteExistente).length },
     { k: "Duración total (minutos)", v: Math.round(minutos * 10) / 10 },
   ]);
+
+  // Fase E2. Con las facturas del Excel (incluye las «duplicadas» de un reproceso, igual que la hoja Facturas).
+  agregarHojaIva(wb, periodosDeFacturas(facturas));
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

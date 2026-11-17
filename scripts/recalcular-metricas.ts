@@ -23,7 +23,7 @@ async function main(): Promise<void> {
     if (!f) continue;
     eventos.push({
       tipo: "factura", estado: f.estado, subtotal: f.subtotal, iva: f.iva, impoconsumo: f.impoconsumo, total: f.total,
-      clienteNuevo: a.clienteNuevo, nitProveedor: f.nitProveedor, proveedor: f.proveedor,
+      clienteNuevo: a.clienteNuevo, nitProveedor: f.nitProveedor, proveedor: f.proveedor, fecha: f.fecha, // reconstruye porPeriodo (Fase E2)
     });
   }
   const m = metricasDesdeEventos(eventos);

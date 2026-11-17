@@ -10,6 +10,7 @@ const ENLACES = [
   { href: "/", texto: "Procesar facturas", activo: (p: string) => p === "/" || p.startsWith("/procesos") },
   { href: "/revision", texto: "Revisión", activo: (p: string) => p.startsWith("/revision") },
   { href: "/metricas", texto: "Métricas", activo: (p: string) => p.startsWith("/metricas") },
+  { href: "/reportes", texto: "Reportes", activo: (p: string) => p.startsWith("/reportes") }, // Fase E2
 ];
 
 export function MenuSuperior() {
@@ -34,7 +35,8 @@ export function MenuSuperior() {
     <header className="sticky top-0 z-10 border-b border-borde bg-superficie/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
         <span className="font-semibold tracking-tight">Procesador de facturas</span>
-        <nav className="flex gap-1" aria-label="Principal">
+        {/* flex-wrap: con 4 pestañas el menú no cabe en una línea en el celular (375 px). */}
+        <nav className="flex flex-wrap gap-1" aria-label="Principal">
           {ENLACES.map((e) => (
             <Link
               key={e.href}

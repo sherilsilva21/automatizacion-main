@@ -103,7 +103,7 @@ export async function guardarFactura(e: EntradaGuardado): Promise<ResultadoArchi
     tx.update(refArchivo, { estado: "ok", resultado: estado, clienteNuevo, clienteExistente: Boolean(sCliente?.exists), hashArchivo: e.hash, error: null, disponibleDesde: TERMINADO });
     aplicarMetricas(tx, e.procesoId, {
       tipo: "factura", estado, subtotal: p.subtotal, iva: p.iva, impoconsumo: p.impoconsumo ?? 0, total: p.total,
-      clienteNuevo, nitProveedor: p.nitProveedor, proveedor: p.proveedor,
+      clienteNuevo, nitProveedor: p.nitProveedor, proveedor: p.proveedor, fecha: p.fecha, // fecha: periodo de IVA (Fase E2)
     });
     return estado;
   });

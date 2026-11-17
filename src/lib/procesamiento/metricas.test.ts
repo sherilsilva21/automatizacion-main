@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularTasas, cambiosDe, cambiosManual, metricasDesdeEventos, metricasVacias, proveedoresOrdenados, sumarMetricas, type ImportesManual } from "./metricas";
+import { calcularTasas, cambiosDe, cambiosManual, metricasDesdeEventos, metricasVacias, proveedoresOrdenados, sinDatosPorPeriodo, sumarMetricas, type ImportesManual } from "./metricas";
 
 const factura = (estado: "aceptada" | "revision", over = {}) =>
   cambiosDe({ tipo: "factura", estado, subtotal: 100000, iva: 19000, impoconsumo: 0, total: 119000, clienteNuevo: false, nitProveedor: "883800871", proveedor: "Soluciones TI S.A.S.", ...over });
@@ -104,5 +104,64 @@ describe("correcciones manuales en las métricas", () => {
     expect(a.proveedores["111"]).toMatchObject({ n: 2, total: 2380 });
     expect(a.clientesNuevos).toBe(1);
     expect(sumarMetricas([a, a]).manuales.n).toBe(4);
+  });
+});
+
+describe("Fase E2 · métricas por periodo de IVA", () => {
+  const manual: ImportesManual = { subtotal: 1000, iva: 190, impoconsumo: 0, total: 1190, nitProveedor: "111", proveedor: "Uno S.A.S.", fecha: "2026-03-15" };
+  const porPeriodo = (c: ReturnType<typeof cambiosDe>) => c.filter((x) => x.ruta[1] === "porPeriodo");
+
+  it("una factura ACEPTADA del 15 de marzo suma al bimestre mar–abr (2026-B2)", () => {
+    const c = factura("aceptada", { fecha: "2026-03-15" });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "n"], incremento: 1 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "subtotal"], incremento: 100000 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "iva"], incremento: 19000 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "total"], incremento: 119000 });
+  });
+  it("una factura en REVISIÓN no entra a ningún periodo (su fecha puede estar mal leída)", () => {
+    expect(porPeriodo(factura("revision", { fecha: "2026-03-15" }))).toEqual([]);
+  });
+  it("sin fecha, o con una fecha inválida, no suma a ningún periodo", () => {
+    expect(porPeriodo(factura("aceptada"))).toEqual([]);
+    expect(porPeriodo(factura("aceptada", { fecha: "2026-02-30" }))).toEqual([]);
+  });
+  it("primera corrección manual: suma la factura completa al periodo de su fecha", () => {
+    const c = cambiosManual(manual);
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "n"], incremento: 1 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "total"], incremento: 1190 });
+  });
+  it("corregir la fecha del 15 de marzo al 2 de mayo: sale completa de 2026-B2 y entra completa a 2026-B3", () => {
+    const c = cambiosManual({ ...manual, fecha: "2026-05-02" }, manual);
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "n"], incremento: -1 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "total"], incremento: -1190 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B3", "n"], incremento: 1 });
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B3", "total"], incremento: 1190 });
+    expect(c.some((x) => x.ruta.join() === "metricas,manuales,n")).toBe(false); // sigue siendo UNA factura manual
+  });
+  it("cambiar la fecha dentro del mismo bimestre y el total: solo la diferencia, sin mover la factura", () => {
+    const c = cambiosManual({ ...manual, fecha: "2026-04-30", total: 1500, subtotal: 1310 }, manual);
+    expect(c.some((x) => x.ruta.join() === "metricas,porPeriodo,2026-B2,n")).toBe(false);
+    expect(c).toContainEqual({ ruta: ["metricas", "porPeriodo", "2026-B2", "total"], incremento: 310 });
+  });
+  it("la suma de los periodos es igual a «lo procesado» (aceptadas + manuales)", () => {
+    const f = (fecha: string, total: number, estado: "aceptada" | "revision" = "aceptada") =>
+      ({ tipo: "factura", estado, subtotal: total, iva: 0, impoconsumo: 0, total, clienteNuevo: false, nitProveedor: "1", proveedor: "P", fecha }) as const;
+    const m = metricasDesdeEventos([
+      f("2026-01-10", 100), f("2026-03-01", 200), f("2026-06-30", 300), f("2026-07-01", 999, "revision"),
+      { tipo: "manual", clienteNuevo: false, ...manual, fecha: "2026-12-31", total: 400 },
+    ]);
+    const sumaPeriodos = Object.values(m.porPeriodo ?? {}).reduce((a, p) => a + p.total, 0);
+    expect(sumaPeriodos).toBe(m.aceptadas.total + m.manuales.total);
+    expect(Object.keys(m.porPeriodo ?? {}).sort()).toEqual(["2026-B1", "2026-B2", "2026-B3", "2026-B6"]);
+  });
+  it("sumarMetricas suma los periodos de varios lotes", () => {
+    const a = metricasDesdeEventos([{ tipo: "manual", clienteNuevo: false, ...manual }]);
+    expect(sumarMetricas([a, a, undefined]).porPeriodo?.["2026-B2"]).toEqual({ n: 2, subtotal: 2000, iva: 380, impoconsumo: 0, total: 2380 });
+  });
+  it("detecta lotes anteriores a la Fase E2 (procesaron facturas pero no tienen periodos)", () => {
+    expect(sinDatosPorPeriodo({ aceptadas: { n: 3, subtotal: 1, iva: 0, impoconsumo: 0, total: 1 } })).toBe(true);
+    expect(sinDatosPorPeriodo(metricasDesdeEventos([{ tipo: "manual", clienteNuevo: false, ...manual }]))).toBe(false);
+    expect(sinDatosPorPeriodo({ revision: { n: 3, subtotal: 0, iva: 0, impoconsumo: 0, total: 0 } })).toBe(false); // nada procesado: no aporta
+    expect(sinDatosPorPeriodo(undefined)).toBe(false);
   });
 });

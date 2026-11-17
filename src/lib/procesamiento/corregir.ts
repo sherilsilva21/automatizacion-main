@@ -17,9 +17,10 @@ export type ResultadoCorreccion =
   | { ok: true; ignoradas: string[]; clienteNuevo: boolean }
   | { ok: false; status: 404 | 409 | 422; error: string; motivos?: string[] };
 
-const importesDe = (f: Pick<Factura, "subtotal" | "iva" | "impoconsumo" | "total" | "nitProveedor" | "proveedor">): ImportesManual => ({
+// `fecha` (Fase E2): si la persona la corrige a otro periodo de IVA, el importe se mueve de periodo.
+const importesDe = (f: Pick<Factura, "subtotal" | "iva" | "impoconsumo" | "total" | "nitProveedor" | "proveedor" | "fecha">): ImportesManual => ({
   subtotal: f.subtotal ?? 0, iva: f.iva ?? 0, impoconsumo: f.impoconsumo ?? 0, total: f.total ?? 0,
-  nitProveedor: f.nitProveedor, proveedor: f.proveedor,
+  nitProveedor: f.nitProveedor, proveedor: f.proveedor, fecha: f.fecha,
 });
 
 export async function corregirFactura(o: { hash: string; uid: string; email: string; datos: DatosManuales; confirmado: boolean }): Promise<ResultadoCorreccion> {

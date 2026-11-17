@@ -107,6 +107,11 @@ export interface Metricas {
   clientesNuevos: number;
   /** Solo facturas aceptadas, por NIT del proveedor (sin DV). */
   proveedores: Record<string, MetricasProveedor>;
+  /**
+   * Fase E2 · por periodo de IVA (`"2026-B3"`), según la fecha de EMISIÓN: aceptadas por la máquina + revisadas a
+   * mano (lo mismo que «lo procesado»). Opcional: los lotes procesados antes de la Fase E2 no lo tienen.
+   */
+  porPeriodo?: Record<string, Importes>;
 }
 
 /** procesos/{procesoId} */

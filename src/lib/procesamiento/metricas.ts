@@ -1,6 +1,7 @@
 // Funciones PURAS de métricas (sin Firestore): describir los cambios, sumar lotes y calcular tasas.
 
 import type { Importes, Metricas, MetricasProveedor } from "@/lib/modelo/tipos";
+import { periodoDe } from "@/lib/reportes/periodos";
 
 export const importesVacios = (): Importes => ({ n: 0, subtotal: 0, iva: 0, impoconsumo: 0, total: 0 });
 
@@ -12,6 +13,7 @@ export const metricasVacias = (): Metricas => ({
   duplicadas: 0,
   clientesNuevos: 0,
   proveedores: {},
+  porPeriodo: {},
 });
 
 // ───────────────────────── Cambios (lo que se incrementa al guardar) ─────────────────────────
@@ -24,6 +26,8 @@ export interface ImportesManual {
   total: number;
   nitProveedor: string | null;
   proveedor: string | null;
+  /** Fecha de emisión `yyyy-mm-dd` (Fase E2: periodo de IVA). Sin fecha válida no suma a ningún periodo. */
+  fecha?: string | null;
 }
 
 export type EventoMetrica =
@@ -41,6 +45,8 @@ export type EventoMetrica =
       /** NIT sin DV y razón social (solo se usan si la factura fue aceptada). */
       nitProveedor: string | null;
       proveedor: string | null;
+      /** Fecha de emisión `yyyy-mm-dd` (Fase E2; solo se usa si la factura fue aceptada). */
+      fecha?: string | null;
     };
 
 /** Un cambio: sumar `incremento` a la ruta, o fijar `texto` (nombre del proveedor). */
@@ -75,6 +81,25 @@ export function cambiosManual(nuevo: ImportesManual & { clienteNuevo?: boolean }
     }
     cambios.push({ ruta: [...base, "nombre"], texto: nuevo.proveedor ?? nuevo.nitProveedor });
   }
+
+  // Fase E2 · periodo de IVA: misma lógica que el proveedor. Si la persona corrige la fecha a otro periodo,
+  // la factura sale completa del viejo y entra completa al nuevo; si sigue en el mismo, solo la diferencia.
+  const periodoNuevo = periodoDe(nuevo.fecha);
+  const periodoViejo = previo ? periodoDe(previo.fecha) : null;
+  const mismoPeriodo = Boolean(previo) && periodoViejo === periodoNuevo;
+  if (periodoViejo && !mismoPeriodo && previo) {
+    const viejo = ["metricas", "porPeriodo", periodoViejo];
+    cambios.push({ ruta: [...viejo, "n"], incremento: -1 });
+    for (const c of IMPORTES) if (previo[c] !== 0) cambios.push({ ruta: [...viejo, c], incremento: -previo[c] });
+  }
+  if (periodoNuevo) {
+    const base = ["metricas", "porPeriodo", periodoNuevo];
+    if (!mismoPeriodo) cambios.push({ ruta: [...base, "n"], incremento: 1 });
+    for (const c of IMPORTES) {
+      const d = mismoPeriodo ? delta(c) : nuevo[c];
+      if (d !== 0) cambios.push({ ruta: [...base, c], incremento: d });
+    }
+  }
   return cambios;
 }
 
@@ -100,6 +125,19 @@ export function cambiosDe(e: EventoMetrica): Cambio[] {
       { ruta: [...base, "impoconsumo"], incremento: e.impoconsumo ?? 0 },
       { ruta: [...base, "total"], incremento: e.total ?? 0 },
       { ruta: [...base, "nombre"], texto: e.proveedor ?? e.nitProveedor },
+    );
+  }
+  // Fase E2 · periodo de IVA por fecha de emisión: solo aceptadas (las de revisión pueden tener la fecha mal leída
+  // y no entran a «lo procesado» hasta que una persona las revise; entonces suman por `cambiosManual`).
+  const periodo = e.estado === "aceptada" ? periodoDe(e.fecha) : null;
+  if (periodo) {
+    const base = ["metricas", "porPeriodo", periodo];
+    cambios.push(
+      { ruta: [...base, "n"], incremento: 1 },
+      { ruta: [...base, "subtotal"], incremento: e.subtotal ?? 0 },
+      { ruta: [...base, "iva"], incremento: e.iva ?? 0 },
+      { ruta: [...base, "impoconsumo"], incremento: e.impoconsumo ?? 0 },
+      { ruta: [...base, "total"], incremento: e.total ?? 0 },
     );
   }
   return cambios;
@@ -130,8 +168,22 @@ export function sumarMetricas(lotes: (Partial<Metricas> | undefined)[]): Metrica
       const previo: MetricasProveedor = r.proveedores[nit] ?? { ...importesVacios(), nombre: p.nombre };
       r.proveedores[nit] = { ...sumaImportes(previo, p), nombre: p.nombre || previo.nombre };
     }
+    const porPeriodo = (r.porPeriodo ??= {});
+    for (const [clave, p] of Object.entries(m.porPeriodo ?? {})) {
+      porPeriodo[clave] = sumaImportes(porPeriodo[clave] ?? importesVacios(), p);
+    }
   }
   return r;
+}
+
+/**
+ * Lotes que no tienen datos por periodo aunque procesaron facturas (se procesaron antes de la Fase E2).
+ * Un lote nuevo sin facturas aceptadas ni revisadas tampoco tiene `porPeriodo`, pero no aporta nada al reporte:
+ * por eso solo se cuentan los que sí tienen algo procesado. (Aceptar exige fecha válida: no hay falsos positivos.)
+ */
+export function sinDatosPorPeriodo(m: Partial<Metricas> | undefined): boolean {
+  const procesadas = (m?.aceptadas?.n ?? 0) + (m?.manuales?.n ?? 0);
+  return procesadas > 0 && Object.keys(m?.porPeriodo ?? {}).length === 0;
 }
 
 export interface Tasas {
